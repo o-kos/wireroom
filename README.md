@@ -27,9 +27,10 @@ makes a recording a usable stand-in for a real run.
 
 ## Status
 
-Early bootstrap. Work starts from `dmd` and the shared protocol types; the Wireroom
-interface crate follows once its toolkit is chosen. The event protocol and the
-recording format are being specified before implementation. See `docs/plans/` for the
+Early bootstrap. Work starts from `dmd` and the shared protocol types. The Wireroom
+interface will be built with GPUI; its accepted window concept is in
+[`docs/ui`](docs/ui/README.md). The event protocol and the recording format are being
+specified before implementation. See `docs/plans/` for the
 active work.
 
 ## Building

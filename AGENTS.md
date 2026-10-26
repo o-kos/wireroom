@@ -6,8 +6,9 @@ Wireroom is the product: an application for demodulating recorded signals and
 inspecting results. It starts `dmd` and consumes its events. `dmd` is also a complete
 command-line tool. Only the optional native layer reaches the signal core through the
 C ABI. Everything implementing that ABI is outside this repository's scope. The
-interface toolkit is undecided; do not create an interface crate yet. Once created,
-the interface crate builds the `wr` binary, while `dmd` keeps its name.
+interface toolkit is GPUI, through GPUI Kit, following the component principles of
+[Argand](https://github.com/o-kos/argand). The interface crate builds the `wr` binary,
+while `dmd` keeps its name.
 
 ## Workspace
 
@@ -18,6 +19,7 @@ the interface crate builds the `wr` binary, while `dmd` keeps its name.
 - `assets/icons/`: colour and monochrome Wireroom icon sources, with optical variants
   for small sizes.
 - `docs/plans`: active plans; `docs/plans/completed`: finished plans.
+- `docs/ui`: the accepted window concept and its interactive mock-up.
 - `.github/scripts`: CI decision logic; `scripts`: local policy checks.
 
 The event protocol, recording format and result layout belong to later work.
@@ -69,10 +71,12 @@ The CLI currently reports that each command is not implemented. Native builds re
 
 Write all repository content in English.
 
+Ask the owner questions one at a time or number them, so each can be answered by number.
+
 Do not name or imply other repositories, internal hosts, organisations or filesystem
 paths outside this repository, or describe prior or parallel implementations. Public
-developer infrastructure, published standards and conventions, and tool-mandated
-filenames are outside this disclosure rule's scope.
+developer infrastructure, published standards and conventions, tool-mandated
+filenames and the public Argand project are outside this disclosure rule's scope.
 
 Dependencies may use the package registry or workspace paths, never external path or
 git sources.
