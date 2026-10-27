@@ -45,7 +45,17 @@ cargo test --locked || fail "tests failed; resolve the failures"
 cargo test -p dmd-native --locked || fail "core-independent native tests failed; resolve the failures"
 
 mkdir -p target/policy
-rustc --edition=2024 -D warnings scripts/content_policy.rs -o target/policy/content-policy || fail "cannot compile the content policy"
+policy_hash=$(git hash-object scripts/content_policy.rs) || fail "cannot hash the content policy"
+hash_file=target/policy/content-policy.hash
+built_hash=
+if test -f "$hash_file"; then
+    built_hash=$(cat "$hash_file") || fail "cannot read the content policy hash"
+fi
+if test "$policy_hash" != "$built_hash" || ! { test -x target/policy/content-policy || test -x target/policy/content-policy.exe; }; then
+    rm -f "$hash_file"
+    rustc --edition=2024 -D warnings scripts/content_policy.rs -o target/policy/content-policy || fail "cannot compile the content policy"
+    printf '%s\n' "$policy_hash" > "$hash_file" || fail "cannot record the content policy hash"
+fi
 target/policy/content-policy "$1" < "$updates" || fail "outgoing content violates repository policy"
 
 if test "$policy_configured" = true; then

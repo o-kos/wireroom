@@ -118,7 +118,7 @@ tests and with GNU and BSD differences.
       and other slash-prefixed tokens pass; tree escapes, unapproved URLs, remote paths
       and e-mail addresses are rejected; header and hunk tests stay.
 - [x] Update the policy description in `CONTRIBUTING.md`.
-- [ ] Compile the policy in the pre-push hook only when its source hash changed.
+- [x] Compile the policy in the pre-push hook only when its source hash changed.
 - [ ] Mark the policy and hook tests as ignored, drop `ci_status.rs` from the policy test, and
       run the ignored tests in the hook and in CI only when a change touches the policy, the
       hook or its tests; document the manual command in `CONTRIBUTING.md`.

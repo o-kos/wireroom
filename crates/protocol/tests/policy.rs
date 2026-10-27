@@ -373,6 +373,50 @@ fn invoke_hook(fixture: &Path, base: &str, head: &str, destination: &str) -> std
 
 #[cfg(unix)]
 #[test]
+fn push_hook_caches_only_successful_policy_builds() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = hook_fixture();
+    fixture_git(
+        &fixture,
+        &["commit", "--allow-empty", "-m", "Add safe base"],
+    );
+    let base = fixture_git(&fixture, &["rev-parse", "HEAD"]);
+    let hook = |destination| invoke_hook(&fixture, &base, &base, destination);
+    let hash_file = fixture.join("target/policy/content-policy.hash");
+    assert!(!hook("main").status.success());
+    assert!(!hash_file.exists());
+    assert!(hook("topic").status.success());
+    let hash = fixture_git(&fixture, &["hash-object", "scripts/content_policy.rs"]);
+    assert_eq!(std::fs::read_to_string(&hash_file).unwrap().trim(), hash);
+
+    let compiler = fixture.join("bin/rustc");
+    std::fs::write(&compiler, "exit 1\n").unwrap();
+    std::fs::set_permissions(&compiler, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(hook("topic").status.success());
+    let source = fixture.join("scripts/content_policy.rs");
+    let original = std::fs::read_to_string(&source).unwrap();
+    std::fs::write(&source, format!("{original}\n")).unwrap();
+    let failed = hook("topic");
+    assert!(!failed.status.success());
+    assert!(String::from_utf8_lossy(&failed.stderr).contains("cannot compile the content policy"));
+    assert!(!hash_file.exists());
+
+    std::fs::remove_file(&compiler).unwrap();
+    assert!(hook("topic").status.success());
+    let changed_hash = fixture_git(&fixture, &["hash-object", "scripts/content_policy.rs"]);
+    assert_ne!(hash, changed_hash);
+    assert_eq!(
+        std::fs::read_to_string(&hash_file).unwrap().trim(),
+        changed_hash
+    );
+    std::fs::remove_file(fixture.join("target/policy/content-policy")).unwrap();
+    assert!(hook("topic").status.success());
+    assert!(fixture.join("target/policy/content-policy").is_file());
+}
+
+#[cfg(unix)]
+#[test]
 fn push_hook_checks_new_branches_against_only_the_destination() {
     let fixture = hook_fixture();
     let git = |args: &[&str]| fixture_git(&fixture, args);
