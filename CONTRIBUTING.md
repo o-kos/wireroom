@@ -63,6 +63,20 @@ validating it and executes exactly that path, with the same arguments and ref-up
 input as pre-push, propagating failure. Keep environment-specific policy outside the tree.
 Configure it with `git config dmd.localPolicy <executable>`.
 
+The content policy runs on every push. The hook caches its compiled binary in
+`target/policy/`, rebuilding when the source hash changes or the binary is missing.
+Policy and hook tests are ignored by the default test run. Run them by hand with:
+
+```sh
+cargo test -p dmd-protocol --test policy --locked -- --ignored
+```
+
+The hook runs these tests when any outgoing commit touches `scripts/content_policy.rs`,
+`.githooks/pre-push` or `crates/protocol/tests/policy.rs`. For a new branch, it considers
+only commits not already on the destination remote. Both CI tiers run the same command
+when those paths differ from the Pull Request base SHA, or from the previous commit for
+a push to `main` or a manual run. The `status` job tests its own decision logic separately.
+
 Run the full local gate before every push. It stops at the first failed command and
 explains the failure:
 
@@ -93,8 +107,8 @@ Administrators are not included in the protection, so an administrator can still
 to or merge into `main` directly. For that reason the hook, an early local copy of the
 gate, also refuses direct pushes to `main`. Server-side merges do not execute it.
 
-Draft Pull Requests run formatting, default and native lints, policy tests and
-core-independent native tests on Linux, producing `ci/quick`. Ready Pull Requests,
+Draft Pull Requests run formatting, default and native lints, conditional policy tests
+and core-independent native tests on Linux, producing `ci/quick`. Ready Pull Requests,
 pushes to `main` and manual runs require Linux, Windows and macOS tests and release
 builds, producing `ci/full`. Skipped results do not count as successes. The required
 check on `main` is `ci/full`, and the branch must be up to date with `main` before

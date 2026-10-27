@@ -18,6 +18,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Install the pinned Rust toolchain
         run: rustup show active-toolchain
       - run: cargo fmt --all -- --check
@@ -29,7 +30,17 @@ jobs:
           native_lib_dir=$(mktemp -d "$PWD/target/native-clippy.XXXXXX")
           DMD_CORE_LIB_DIR="$native_lib_dir" cargo clippy -p dmd --features native --all-targets --locked
           rmdir "$native_lib_dir"
-      - run: cargo test -p dmd-protocol --test policy --locked
+      - name: Test the policy when its sources change
+        shell: bash
+        env:
+          POLICY_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base=${POLICY_BASE:-HEAD^}
+          changed=$(git diff --name-only --no-renames "$base" HEAD -- \
+            scripts/content_policy.rs .githooks/pre-push crates/protocol/tests/policy.rs)
+          if test -n "$changed"; then
+            cargo test -p dmd-protocol --test policy --locked -- --ignored
+          fi
       - run: cargo test -p dmd-native --locked
 
   full:
@@ -43,6 +54,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Install the pinned Rust toolchain
         run: rustup show active-toolchain
       - run: cargo fmt --all -- --check
@@ -55,6 +67,17 @@ jobs:
           DMD_CORE_LIB_DIR="$native_lib_dir" cargo clippy -p dmd --features native --all-targets --locked
           rmdir "$native_lib_dir"
       - run: cargo test --locked
+      - name: Test the policy when its sources change
+        shell: bash
+        env:
+          POLICY_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base=${POLICY_BASE:-HEAD^}
+          changed=$(git diff --name-only --no-renames "$base" HEAD -- \
+            scripts/content_policy.rs .githooks/pre-push crates/protocol/tests/policy.rs)
+          if test -n "$changed"; then
+            cargo test -p dmd-protocol --test policy --locked -- --ignored
+          fi
       - run: cargo test -p dmd-native --locked
       - run: cargo build --release --locked
       - run: cargo build -p dmd --no-default-features --locked

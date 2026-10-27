@@ -129,27 +129,24 @@ fn dependency_policy_rejects_external_paths_and_git() {
 }
 
 #[test]
+#[ignore = "run when the content policy changes"]
 fn policy_scripts_pass_their_tests() {
     let root = workspace();
     let output_dir = root.join("target/policy-tests");
     std::fs::create_dir_all(&output_dir).unwrap();
-    for (source, name) in [
-        ("scripts/content_policy.rs", "content-policy"),
-        (".github/scripts/ci_status.rs", "ci-status"),
-    ] {
-        let binary = output_dir.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
-        let compile = Command::new("rustc")
-            .current_dir(&root)
-            .args(["--edition=2024", "-D", "warnings", "--test", source, "-o"])
-            .arg(&binary)
-            .status()
-            .unwrap();
-        assert!(compile.success(), "cannot compile {source}");
-        assert!(
-            Command::new(&binary).status().unwrap().success(),
-            "{source} tests failed"
-        );
-    }
+    let source = "scripts/content_policy.rs";
+    let binary = output_dir.join(format!("content-policy{}", std::env::consts::EXE_SUFFIX));
+    let compile = Command::new("rustc")
+        .current_dir(&root)
+        .args(["--edition=2024", "-D", "warnings", "--test", source, "-o"])
+        .arg(&binary)
+        .status()
+        .unwrap();
+    assert!(compile.success(), "cannot compile {source}");
+    assert!(
+        Command::new(&binary).status().unwrap().success(),
+        "{source} tests failed"
+    );
 }
 
 #[cfg(unix)]
@@ -164,6 +161,7 @@ fn without_git_environment(mut command: Command) -> Command {
 
 #[cfg(unix)]
 #[test]
+#[ignore = "run when the policy or hook changes"]
 fn push_hook_ignores_inherited_git_environment() {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -189,6 +187,7 @@ fn push_hook_ignores_inherited_git_environment() {
             "--exact",
             "push_hook_enforces_content_and_local_policy",
             "--nocapture",
+            "--ignored",
         ]);
         if contaminated {
             test.env("GIT_DIR", &other);
@@ -232,7 +231,7 @@ fn hook_fixture() -> PathBuf {
     )
     .unwrap();
     let cargo = fixture.join("bin/cargo");
-    std::fs::write(&cargo, "exit 0\n").unwrap();
+    std::fs::write(&cargo, "printf '%s\\n' \"$*\" >> cargo-calls\n").unwrap();
     std::fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).unwrap();
     let git = |args: &[&str]| fixture_git(&fixture, args);
     git(&["init", "--initial-branch=topic"]);
@@ -258,6 +257,7 @@ fn fixture_git(fixture: &Path, args: &[&str]) -> String {
 
 #[cfg(unix)]
 #[test]
+#[ignore = "run when the policy or hook changes"]
 fn push_hook_enforces_content_and_local_policy() {
     use std::os::unix::fs::PermissionsExt;
     let fixture = hook_fixture();
@@ -342,17 +342,21 @@ fn assert_relative_policy_ignores_path_decoy(fixture: &Path, base: &str) {
 
 #[cfg(unix)]
 fn invoke_hook(fixture: &Path, base: &str, head: &str, destination: &str) -> std::process::Output {
+    invoke_hook_updates(
+        fixture,
+        &format!("refs/heads/topic {head} refs/heads/{destination} {base}\n"),
+    )
+}
+
+#[cfg(unix)]
+fn invoke_hook_updates(fixture: &Path, input: &str) -> std::process::Output {
     let path = std::env::join_paths(
         std::iter::once(fixture.join("bin"))
             .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap())),
     )
     .unwrap();
     let updates = fixture.join("updates");
-    std::fs::write(
-        &updates,
-        format!("refs/heads/topic {head} refs/heads/{destination} {base}\n"),
-    )
-    .unwrap();
+    std::fs::write(&updates, input).unwrap();
     without_git_environment(Command::new("git"))
         .current_dir(fixture)
         .args([
@@ -372,7 +376,108 @@ fn invoke_hook(fixture: &Path, base: &str, head: &str, destination: &str) -> std
 }
 
 #[cfg(unix)]
+fn commit_fixture_file(fixture: &Path, path: &str, content: &str) -> String {
+    let file = fixture.join(path);
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(file, content).unwrap();
+    fixture_git(fixture, &["add", path]);
+    fixture_git(fixture, &["commit", "-m", "Update fixture content"]);
+    fixture_git(fixture, &["rev-parse", "HEAD"])
+}
+
+#[cfg(unix)]
+fn assert_policy_test_runs(fixture: &Path, input: &str, expected: usize) {
+    let log = fixture.join("cargo-calls");
+    std::fs::write(&log, "").unwrap();
+    let output = invoke_hook_updates(fixture, input);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let calls = std::fs::read_to_string(log).unwrap();
+    assert_eq!(
+        calls
+            .lines()
+            .filter(|line| *line == "test -p dmd-protocol --test policy --locked -- --ignored")
+            .count(),
+        expected,
+        "{calls}"
+    );
+}
+
+#[cfg(unix)]
 #[test]
+#[ignore = "run when the policy or hook changes"]
+fn push_hook_selects_tests_from_every_outgoing_commit() {
+    for path in [
+        "scripts/content_policy.rs",
+        ".githooks/pre-push",
+        "crates/protocol/tests/policy.rs",
+    ] {
+        let fixture = hook_fixture();
+        let git = |args: &[&str]| fixture_git(&fixture, args);
+        git(&["add", "scripts/content_policy.rs"]);
+        git(&["commit", "-m", "Add safe base"]);
+        let base = git(&["rev-parse", "HEAD"]);
+        let unrelated = commit_fixture_file(&fixture, "note.txt", "Safe content\n");
+        assert_policy_test_runs(
+            &fixture,
+            &format!("refs/heads/topic {unrelated} refs/heads/topic {base}\n"),
+            0,
+        );
+        let content = std::fs::read_to_string(fixture.join(path)).unwrap_or_default();
+        let changed = commit_fixture_file(&fixture, path, &format!("{content}\n"));
+        git(&["revert", "--no-edit", &changed]);
+        let reverted = git(&["rev-parse", "HEAD"]);
+        assert_policy_test_runs(
+            &fixture,
+            &format!("refs/heads/topic {reverted} refs/heads/topic {unrelated}\n"),
+            1,
+        );
+        assert_policy_test_runs(
+            &fixture,
+            &format!(
+                "refs/heads/other {unrelated} refs/heads/other {base}\n\
+                 refs/heads/topic {reverted} refs/heads/topic {unrelated}\n\
+                 refs/heads/copy {changed} refs/heads/copy {base}\n"
+            ),
+            1,
+        );
+        let zero = "0".repeat(40);
+        assert_policy_test_runs(
+            &fixture,
+            &format!("(delete) {zero} refs/heads/topic {reverted}\n"),
+            0,
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "run when the policy or hook changes"]
+fn push_hook_selects_tests_for_new_destination_commits() {
+    let fixture = hook_fixture();
+    let git = |args: &[&str]| fixture_git(&fixture, args);
+    git(&["commit", "--allow-empty", "-m", "Add safe base"]);
+    let base = git(&["rev-parse", "HEAD"]);
+    let head = commit_fixture_file(&fixture, ".githooks/pre-push", "Safe content\n");
+    git(&["update-ref", "refs/remotes/secondary/topic", &head]);
+    git(&["update-ref", "refs/remotes/origin-backup/topic", &head]);
+    let input = format!(
+        "refs/heads/topic {head} refs/heads/topic {}\n",
+        "0".repeat(40)
+    );
+    assert_policy_test_runs(&fixture, &input, 1);
+    git(&["update-ref", "refs/remotes/origin/base", &base]);
+    assert_policy_test_runs(&fixture, &input, 1);
+    git(&["update-ref", "refs/remotes/origin/topic", &head]);
+    assert_policy_test_runs(&fixture, &input, 0);
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "run when the policy or hook changes"]
 fn push_hook_caches_only_successful_policy_builds() {
     use std::os::unix::fs::PermissionsExt;
 
@@ -417,6 +522,7 @@ fn push_hook_caches_only_successful_policy_builds() {
 
 #[cfg(unix)]
 #[test]
+#[ignore = "run when the policy or hook changes"]
 fn push_hook_checks_new_branches_against_only_the_destination() {
     let fixture = hook_fixture();
     let git = |args: &[&str]| fixture_git(&fixture, args);
@@ -450,6 +556,7 @@ fn push_hook_checks_new_branches_against_only_the_destination() {
 
 #[cfg(unix)]
 #[test]
+#[ignore = "run when the policy or hook changes"]
 fn push_hook_checks_files_and_text_introduced_only_by_a_merge() {
     for location in ["filename", "added text"] {
         let fixture = hook_fixture();

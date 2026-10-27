@@ -58,6 +58,40 @@ if test "$policy_hash" != "$built_hash" || ! { test -x target/policy/content-pol
 fi
 target/policy/content-policy "$1" < "$updates" || fail "outgoing content violates repository policy"
 
+run_policy_tests=false
+while read -r local_ref local_oid remote_ref remote_oid; do
+    case "$local_oid" in
+        *[!0]*) ;;
+        *) continue ;;
+    esac
+    case "$remote_oid" in
+        *[!0]*)
+            commits=$(git rev-list "$remote_oid..$local_oid") || fail "cannot list outgoing commits"
+            ;;
+        *)
+            remote_oids=$(git for-each-ref --format='%(objectname)' "refs/remotes/$1/") || fail "cannot list destination refs"
+            commits=$(
+                set -- "$local_oid" --not
+                for oid in $remote_oids; do
+                    set -- "$@" "$oid"
+                done
+                git rev-list "$@"
+            ) || fail "cannot list outgoing commits"
+            ;;
+    esac
+    for commit in $commits; do
+        changed=$(git diff-tree --root --diff-merges=first-parent --no-commit-id --name-only --no-renames -r "$commit" -- \
+            scripts/content_policy.rs .githooks/pre-push crates/protocol/tests/policy.rs) || fail "cannot inspect outgoing paths"
+        if test -n "$changed"; then
+            run_policy_tests=true
+            break 2
+        fi
+    done
+done < "$updates"
+if test "$run_policy_tests" = true; then
+    cargo test -p dmd-protocol --test policy --locked -- --ignored || fail "policy tests failed; resolve the failures"
+fi
+
 if test "$policy_configured" = true; then
     "$policy" "$@" < "$updates" || fail "local policy hook failed"
 fi
