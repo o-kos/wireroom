@@ -126,7 +126,8 @@ fn token_violation(token: &str) -> Option<&'static str> {
         }
         return url_path_violation(address);
     }
-    if let Some(path) = token.strip_prefix("file:/")
+    if let Some((scheme, path)) = token.split_once(":/")
+        && scheme.eq_ignore_ascii_case("file")
         && windows_drive_location(path)
     {
         return Some("private filesystem location");
@@ -450,12 +451,14 @@ mod tests {
             for drive in ["C", "z"] {
                 for separator in ["/", "\\"] {
                     let path = [format!("{drive}:"), "capture".into()].join(separator);
-                    let value = format!("file:{}{path}", "/".repeat(slash_count));
-                    assert_eq!(
-                        violation(&value),
-                        Some("private filesystem location"),
-                        "missed {value}"
-                    );
+                    for scheme in ["file", "FILE", "FiLe"] {
+                        let value = format!("{scheme}:{}{path}", "/".repeat(slash_count));
+                        assert_eq!(
+                            violation(&value),
+                            Some("private filesystem location"),
+                            "missed {value}"
+                        );
+                    }
                 }
             }
         }
