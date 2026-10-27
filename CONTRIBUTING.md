@@ -47,11 +47,14 @@ git config core.hooksPath .githooks
 ```
 
 The pre-push hook refuses direct pushes to `main`: changes reach it through a Pull
-Request. It checks outgoing commit messages, filenames and added text for absolute
-filesystem paths, paths escaping the tree, e-mail addresses and unapproved hosts or
-URLs. The small generic host allowlist lives in `scripts/content_policy.rs`. It is a
-text hygiene check, not a secrets scanner. Avoid binary additions that require text
-review without a separate review of their contents.
+Request. It checks outgoing commit messages, filenames and added text for private
+filesystem locations (home directories, home-relative paths, mount locations, Windows
+drive paths and UNC paths), paths escaping the tree, e-mail addresses and unapproved
+URL or remote-path hosts. Other slash-prefixed tokens and bare host-like names pass.
+The small generic host allowlist lives in `scripts/content_policy.rs`.
+Environment-specific names belong in `dmd.localPolicy`. This is a text hygiene check,
+not a secrets scanner. Avoid binary additions that require text review without a
+separate review of their contents.
 
 The hook reports whether `dmd.localPolicy` is configured. When configured, it must name
 an executable file; empty or invalid values fail the gate. Relative values are relative

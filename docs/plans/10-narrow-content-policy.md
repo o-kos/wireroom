@@ -76,7 +76,7 @@ reviewer: Codex `gpt-5.6-sol`, high reasoning effort, read-only.
       less-than sign), property access ending in a DNS suffix, anchored ignore patterns
       and other slash-prefixed tokens pass; tree escapes, unapproved URLs, remote paths
       and e-mail addresses are rejected; header and hunk tests stay.
-- [ ] Update the policy description in `CONTRIBUTING.md`.
+- [x] Update the policy description in `CONTRIBUTING.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
