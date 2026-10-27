@@ -73,6 +73,10 @@ Write all repository content in English.
 
 Ask the owner questions one at a time or number them, so each can be answered by number.
 
+Recommend starting a new session when it helps, for example when a task is finished and the
+next one is unrelated, or when the context has grown long. Offer a ready prompt for that session
+at the same time.
+
 Do not name or imply other repositories, internal hosts, organisations or filesystem
 paths outside this repository, or describe prior or parallel implementations. Public
 developer infrastructure, published standards and conventions, tool-mandated
