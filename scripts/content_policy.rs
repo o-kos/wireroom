@@ -508,6 +508,148 @@ mod tests {
         }
     }
 
+    fn added_text_diff(file: &str, text: &str) -> String {
+        let header = ["b", file].join("/");
+        format!("+++ {header}\n@@ -0,0 +1 @@\n+{text}")
+    }
+
+    #[test]
+    fn permits_anchored_gitignore_patterns() {
+        for file in [".gitignore".to_owned(), ["nested", ".gitignore"].join("/")] {
+            for prefix in ["", "!"] {
+                let pattern = [prefix, "target", ""].join("/");
+                let diff = added_text_diff(&file, &pattern);
+                assert_eq!(check_added_text("test", &diff), Ok(()), "{diff}");
+            }
+        }
+    }
+
+    #[test]
+    fn handles_quoted_gitignore_headers() {
+        for file in [
+            ".gitignore".to_owned(),
+            ["nested directory", ".gitignore"].join("/"),
+            [r"nested\tname", ".gitignore"].join("/"),
+        ] {
+            let header = ["b", &file].join("/");
+            for prefix in ["", "!"] {
+                let pattern = [prefix, "target", ""].join("/");
+                let diff = format!("+++ \"{header}\"\n@@ -0,0 +1 @@\n+{pattern}");
+                assert_eq!(check_added_text("test", &diff), Ok(()), "{diff}");
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_anchored_patterns_outside_gitignore() {
+        let pattern = ["", "target", ""].join("/");
+        for file in [
+            "notes.txt".to_owned(),
+            ".dockerignore".to_owned(),
+            ".gitignore.backup".to_owned(),
+            [".gitignore", "notes.txt"].join("/"),
+        ] {
+            let diff = added_text_diff(&file, &pattern);
+            assert_eq!(
+                check_added_text("test", &diff),
+                Err("commit test: absolute filesystem path in added text at diff line 3".into()),
+                "{diff}"
+            );
+        }
+    }
+
+    #[test]
+    fn checks_gitignore_comments_and_unanchored_lines_unchanged() {
+        let pattern = ["", "target", ""].join("/");
+        for prefix in ["# ", " # ", "stray ", " "] {
+            let diff = added_text_diff(".gitignore", &format!("{prefix}{pattern}"));
+            assert_eq!(
+                check_added_text("test", &diff),
+                Err("commit test: absolute filesystem path in added text at diff line 3".into()),
+                "{diff}"
+            );
+        }
+    }
+
+    #[test]
+    fn keeps_other_checks_for_gitignore_patterns() {
+        let host = ["service", "invalid"].join(".");
+        let email = ["person", &host].join("@");
+        let url = ["https:", "", &host, "data"].join("/");
+        for (text, reason) in [
+            (email, "e-mail address"),
+            (host, "unapproved host"),
+            (url, "unapproved URL host"),
+            (["..", "capture"].join("/"), "path escapes the working tree"),
+            (
+                ["cache", "..", "..", "capture"].join("/"),
+                "path escapes the working tree",
+            ),
+        ] {
+            let anchored = ["", &text].join("/");
+            let negated = ["!", &anchored].concat();
+            for pattern in [&text, &anchored, &negated] {
+                let diff = added_text_diff(".gitignore", pattern);
+                assert_eq!(
+                    check_added_text("test", &diff),
+                    Err(format!("commit test: {reason} in added text at diff line 3")),
+                    "{diff}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn checks_paths_after_the_gitignore_anchor() {
+        let path = ["", "private", "capture"].join("/");
+        for prefix in ["", "!"] {
+            for pattern in [
+                [prefix, &path].join("/"),
+                format!("{} {path}", [prefix, "target"].join("/")),
+            ] {
+                let diff = added_text_diff(".gitignore", &pattern);
+                assert_eq!(
+                    check_added_text("test", &diff),
+                    Err("commit test: absolute filesystem path in added text at diff line 3".into()),
+                    "{diff}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn updates_current_file_and_preserves_diff_line_numbers() {
+        let pattern = ["", "target", ""].join("/");
+        let diff = [
+            added_text_diff(".gitignore", &pattern),
+            added_text_diff("notes.txt", &pattern),
+        ]
+        .join("\n");
+        assert_eq!(
+            check_added_text("test", &diff),
+            Err("commit test: absolute filesystem path in added text at diff line 6".into())
+        );
+    }
+
+    #[test]
+    fn handles_deleted_files_and_clears_current_file() {
+        let pattern = ["", "target", ""].join("/");
+        let null = ["", "dev", "null"].join("/");
+        let old = ["a", ".gitignore"].join("/");
+        let diff = format!(
+            "{}\n--- {old}\n+++ {null}\n@@ -1 +0,0 @@\n-{pattern}",
+            added_text_diff(".gitignore", &pattern)
+        );
+        assert_eq!(check_added_text("test", &diff), Ok(()));
+        let without_file = format!("{diff}\n+{pattern}");
+        assert_eq!(
+            check_added_text("test", &without_file),
+            Err("commit test: absolute filesystem path in added text at diff line 8".into())
+        );
+        let next_file = format!("{diff}\n{}", added_text_diff(".gitignore", &pattern));
+        assert_eq!(check_added_text("test", &next_file), Ok(()));
+    }
+
     #[test]
     fn refuses_main_including_deletion() {
         assert!(
