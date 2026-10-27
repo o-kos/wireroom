@@ -219,12 +219,27 @@ fn check_commit(commit: &str) -> Result<(), String> {
 }
 
 fn check_added_text(commit: &str, diff: &str) -> Result<(), String> {
-    for (number, line) in diff
-        .lines()
-        .enumerate()
-        .filter(|(_, line)| line.starts_with('+') && !line.starts_with("+++"))
-    {
-        if let Some(reason) = violation(&line[1..]) {
+    let mut current_file = None;
+    for (number, line) in diff.lines().enumerate() {
+        if let Some(header) = line.strip_prefix("+++ ") {
+            let path = header
+                .strip_prefix('"')
+                .and_then(|path| path.strip_suffix('"'))
+                .unwrap_or(header);
+            current_file = (path != "/dev/null").then(|| path.strip_prefix("b/").unwrap_or(path));
+            continue;
+        }
+        let Some(text) = line.strip_prefix('+').filter(|_| !line.starts_with("+++")) else {
+            continue;
+        };
+        let text = if current_file.is_some_and(|path| path.rsplit('/').next() == Some(".gitignore")) {
+            text.strip_prefix('/')
+                .or_else(|| text.strip_prefix("!/"))
+                .unwrap_or(text)
+        } else {
+            text
+        };
+        if let Some(reason) = violation(text) {
             return Err(format!(
                 "commit {commit}: {reason} in added text at diff line {}",
                 number + 1

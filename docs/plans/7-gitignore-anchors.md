@@ -50,7 +50,7 @@ reviewer: Codex `gpt-5.6-sol`, high reasoning effort, read-only.
 
 ## Implementation steps
 
-- [ ] Track the current file in `check_added_text` and strip the anchoring `/` from
+- [x] Track the current file in `check_added_text` and strip the anchoring `/` from
       pattern lines of `.gitignore` files before the check.
 - [ ] Add unit tests: an anchored and a negated anchored pattern pass in a root and in
       a nested `.gitignore`; the same line is rejected in another file and in a
