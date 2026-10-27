@@ -109,7 +109,9 @@ Run the reviewer read-only with `codex exec`, an explicit model and effort, a
 change-specific prompt and closed stdin as documented in `CONTRIBUTING.md`.
 
 Mechanical review repeats until nothing substantive remains, challenging every declined
-finding in later rounds. The orchestrator then checks the final diff against the plan
+finding in later rounds, for at most three rounds. If substantive findings remain after the
+third round, stop and give the owner a summary of them with a recommendation; the owner
+decides how to proceed. The orchestrator then checks the final diff against the plan
 and invariants, with at most two correction rounds before escalation to the owner.
 Return one structured findings list to the implementer per round; agents do not
 negotiate, and the orchestrator decides. Summarise accepted and declined findings,

@@ -13,15 +13,9 @@ const HOSTS: &[&str] = &[
     "keepachangelog.com",
     "www.w3.org",
 ];
-// Bare names use common DNS suffixes to distinguish hosts from source expressions.
-// URLs are checked for every scheme and suffix, independently of this heuristic.
 const DNS_SUFFIXES: &[&str] = &[
     "com", "org", "net", "io", "dev", "app", "edu", "gov", "co", "uk", "de", "fr", "ru", "info",
     "biz", "xyz", "invalid",
-];
-const EXTENSIONS: &[&str] = &[
-    "rs", "md", "toml", "lock", "yml", "yaml", "json", "h", "c", "cpp", "txt", "sh", "exe", "dll",
-    "so", "dylib", "a", "lib",
 ];
 
 fn escapes_tree(value: &str) -> bool {
@@ -48,6 +42,75 @@ fn host_like(value: &str) -> bool {
         })
 }
 
+fn private_rooted_location(token: &str) -> bool {
+    token.match_indices('/').any(|(index, _)| {
+        let boundary = token[..index]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_alphanumeric() && !matches!(c, '.' | '_' | '-'));
+        boundary && starts_with_private_root(&token[index..])
+    })
+}
+
+fn starts_with_private_root(token: &str) -> bool {
+    let Some(path) = token.strip_prefix('/') else {
+        return false;
+    };
+    let mut parts = path.split('/');
+    let private_root = match parts.next().unwrap_or("").to_ascii_lowercase().as_str() {
+        "home" | "users" | "root" | "mnt" | "media" | "volumes" => true,
+        "var" => parts
+            .next()
+            .is_some_and(|part| part.eq_ignore_ascii_case("home")),
+        "run" => parts
+            .next()
+            .is_some_and(|part| part.eq_ignore_ascii_case("media")),
+        _ => false,
+    };
+    private_root && parts.any(|part| !part.is_empty())
+}
+
+fn home_relative_location(token: &str) -> bool {
+    token
+        .strip_prefix('~')
+        .and_then(|path| path.split_once('/'))
+        .is_some_and(|(_, path)| !path.is_empty())
+}
+
+fn windows_drive_location(token: &str) -> bool {
+    let bytes = token.as_bytes();
+    bytes.first().is_some_and(u8::is_ascii_alphabetic)
+        && bytes.get(1) == Some(&b':')
+        && bytes.get(2).is_some_and(|c| matches!(c, b'/' | b'\\'))
+}
+
+fn windows_location(token: &str) -> bool {
+    let unc = token
+        .strip_prefix("\\\\\\\\")
+        .or_else(|| token.strip_prefix("\\\\"))
+        .and_then(|rest| rest.split_once(['\\', '/']))
+        .is_some_and(|(host, _)| !host.is_empty());
+    windows_drive_location(token) || unc
+}
+
+fn authority_host(authority: &str) -> &str {
+    authority
+        .rsplit('@')
+        .next()
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("")
+}
+
+fn scheme_relative_host(token: &str) -> Option<String> {
+    let address = token.strip_prefix("//")?;
+    let authority = address.split(['/', '?', '#']).next()?;
+    let host = authority_host(authority).to_ascii_lowercase();
+    let suffix = host.rsplit('.').next()?;
+    (host_like(&host) && DNS_SUFFIXES.contains(&suffix)).then_some(host)
+}
+
 fn token_violation(token: &str) -> Option<&'static str> {
     let token = token.trim_end_matches(['.', ',', ':', '!', '?']);
     if token.is_empty() {
@@ -55,11 +118,21 @@ fn token_violation(token: &str) -> Option<&'static str> {
     }
     if let Some((scheme, address)) = token.split_once("://")
         && !scheme.is_empty()
-        && !address.is_empty()
     {
         let authority = address.split(['/', '?', '#']).next().unwrap_or("");
-        let host_port = authority.rsplit('@').next().unwrap_or("");
-        let host = host_port.split(':').next().unwrap_or("").to_ascii_lowercase();
+        if !authority.is_empty() {
+            let host = authority_host(authority).to_ascii_lowercase();
+            return (!HOSTS.contains(&host.as_str())).then_some("unapproved URL host");
+        }
+        return url_path_violation(address);
+    }
+    if let Some((scheme, path)) = token.split_once(":/")
+        && scheme.eq_ignore_ascii_case("file")
+        && windows_drive_location(path)
+    {
+        return Some("private filesystem location");
+    }
+    if let Some(host) = scheme_relative_host(token) {
         return (!HOSTS.contains(&host.as_str())).then_some("unapproved URL host");
     }
     if let Some((user, address)) = token.split_once('@') {
@@ -75,103 +148,49 @@ fn token_violation(token: &str) -> Option<&'static str> {
             return Some("e-mail address");
         }
     }
-    let drive = token.as_bytes()[0].is_ascii_alphabetic()
-        && token.as_bytes().get(1) == Some(&b':')
-        && token
-            .as_bytes()
-            .get(2)
-            .is_some_and(|c| matches!(c, b'/' | b'\\'));
-    let unc = token
-        .strip_prefix("\\\\")
-        .and_then(|rest| rest.split_once(['\\', '/']))
-        .is_some_and(|(host, _)| !host.is_empty());
-    if drive
-        || token.starts_with('/')
-        || unc
-        || token.starts_with('~') && token.as_bytes().get(1) == Some(&b'/')
-    {
-        // Standalone comment delimiters are syntax, and the null device is the same on
-        // every Unix host, so neither discloses anything about an environment.
-        if !matches!(token, "/" | "//" | "///" | "/*" | "/**" | "/dev/null") {
-            return Some("absolute filesystem path");
-        }
+    path_violation(token)
+}
+
+fn url_path_violation(path: &str) -> Option<&'static str> {
+    let path = path.split(['?', '#']).next().unwrap_or("");
+    if path.strip_prefix('/').is_some_and(windows_drive_location) {
+        return Some("private filesystem location");
+    }
+    path_violation(path)
+}
+
+fn path_violation(token: &str) -> Option<&'static str> {
+    if private_rooted_location(token) || home_relative_location(token) || windows_location(token) {
+        return Some("private filesystem location");
     }
     if escapes_tree(token) {
         return Some("path escapes the working tree");
     }
-    let host = token.split(['/', ':']).next().unwrap_or("").to_ascii_lowercase();
-    if host_like(&host)
-        && host
-            .rsplit('.')
-            .next()
-            .is_some_and(|suffix| DNS_SUFFIXES.contains(&suffix))
-        && !HOSTS.contains(&host.as_str())
-        && !host
-            .rsplit('.')
-            .next()
-            .is_some_and(|ext| EXTENSIONS.contains(&ext))
-        && !host.contains('_')
-    {
-        return Some("unapproved host");
-    }
     None
 }
 
-fn strip_markup_closing_tag<'a>(text: &'a str, earlier: &str) -> &'a str {
-    let Some((tag, rest)) = text.split_once('>') else {
-        return text;
-    };
-    let Some(name) = tag.strip_prefix('/') else {
-        return text;
-    };
-    if name.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
-        && name
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.' | b':'))
-        && earlier.split('<').skip(1).any(|part| {
-            part.strip_prefix(name).is_some_and(|rest| {
-                rest.starts_with(|c: char| c.is_whitespace() || matches!(c, '>' | '/'))
-            })
-        })
-    {
-        return rest;
-    }
-    text
-}
-
 fn violation(text: &str) -> Option<&'static str> {
-    let mut offset = 0;
-    text.split('<')
-        .enumerate()
-        .flat_map(|(index, part)| {
-            let earlier = &text[..offset];
-            offset += part.len() + 1;
-            let part = if index == 0 {
-                part
-            } else {
-                strip_markup_closing_tag(part, earlier)
-            };
-            part.split(|c: char| {
-                c.is_whitespace()
-                    || matches!(
-                        c,
-                        '"' | '\''
-                            | '`'
-                            | '>'
-                            | '('
-                            | ')'
-                            | '['
-                            | ']'
-                            | '{'
-                            | '}'
-                            | '='
-                            | ';'
-                            | ','
-                            | '|'
-                    )
-            })
-        })
-        .find_map(token_violation)
+    text.split(|c: char| {
+        c.is_whitespace()
+            || matches!(
+                c,
+                '"' | '\''
+                    | '`'
+                    | '<'
+                    | '>'
+                    | '('
+                    | ')'
+                    | '['
+                    | ']'
+                    | '{'
+                    | '}'
+                    | '='
+                    | ';'
+                    | ','
+                    | '|'
+            )
+    })
+    .find_map(token_violation)
 }
 
 fn git(args: &[&str]) -> Result<String, String> {
@@ -219,11 +238,9 @@ fn check_commit(commit: &str) -> Result<(), String> {
 }
 
 fn check_added_text(commit: &str, diff: &str) -> Result<(), String> {
-    let mut current_file = None;
     let mut in_hunk = false;
     for (number, line) in diff.lines().enumerate() {
         if line.starts_with("diff ") {
-            current_file = None;
             in_hunk = false;
             continue;
         }
@@ -232,24 +249,10 @@ fn check_added_text(commit: &str, diff: &str) -> Result<(), String> {
             continue;
         }
         if !in_hunk {
-            if let Some(header) = line.strip_prefix("+++ ") {
-                let path = header
-                    .strip_prefix('"')
-                    .and_then(|path| path.strip_suffix('"'))
-                    .unwrap_or(header);
-                current_file = (path != "/dev/null").then(|| path.strip_prefix("b/").unwrap_or(path));
-            }
             continue;
         }
         let Some(text) = line.strip_prefix('+') else {
             continue;
-        };
-        let text = if current_file.is_some_and(|path| path.rsplit('/').next() == Some(".gitignore")) {
-            text.strip_prefix('/')
-                .or_else(|| text.strip_prefix("!/"))
-                .unwrap_or(text)
-        } else {
-            text
         };
         if let Some(reason) = violation(text) {
             return Err(format!(
@@ -303,7 +306,9 @@ fn main() -> Result<(), String> {
     io::stdin()
         .read_to_string(&mut input)
         .map_err(|e| e.to_string())?;
-    let remote = std::env::args().nth(1).ok_or("missing destination remote")?;
+    let remote = std::env::args()
+        .nth(1)
+        .ok_or("missing destination remote")?;
     check_updates(&remote, &input)
 }
 
@@ -311,24 +316,239 @@ fn main() -> Result<(), String> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn rejects_generic_private_content() {
-        for value in [
-            ["", "private", "capture"].join("/"),
-            ["C:", "private", "capture"].join("\\"),
-            ["..", "capture"].join("/"),
-            ["person".to_owned(), ["mail", "invalid"].join(".")].join("@"),
-            [
-                "https:".to_owned(),
-                String::new(),
-                ["service", "invalid"].join("."),
-                "data".into(),
-            ]
-            .join("/"),
-            ["service", "invalid"].join("."),
-        ] {
-            assert!(violation(&value).is_some(), "missed {value}");
+    const PRIVATE_ROOTS: &[&str] = &[
+        "home",
+        "Users",
+        "root",
+        "var/home",
+        "mnt",
+        "media",
+        "run/media",
+        "Volumes",
+    ];
+
+    fn root_case_variants(root: &str) -> Vec<String> {
+        let mut variants = vec![root.to_ascii_lowercase(), root.to_ascii_uppercase()];
+        for (index, _) in root.split('/').enumerate() {
+            let parts: Vec<_> = root
+                .split('/')
+                .enumerate()
+                .map(|(part_index, part)| {
+                    if part_index == index {
+                        part.to_ascii_uppercase()
+                    } else {
+                        part.to_ascii_lowercase()
+                    }
+                })
+                .collect();
+            variants.push(parts.join("/"));
         }
+        variants
+    }
+
+    #[test]
+    fn rejects_private_rooted_locations() {
+        for root in PRIVATE_ROOTS
+            .iter()
+            .flat_map(|root| root_case_variants(root))
+        {
+            for tail in ["person", "person/capture", "person/", "/person"] {
+                let path = ["", &root, tail].join("/");
+                assert_eq!(
+                    violation(&path),
+                    Some("private filesystem location"),
+                    "missed {path}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn requires_a_segment_after_a_private_root() {
+        for root in PRIVATE_ROOTS
+            .iter()
+            .flat_map(|root| root_case_variants(root))
+        {
+            for prefix in ["", "!", "**", "file:"] {
+                for tail in ["", "/", "//"] {
+                    let path = format!("{prefix}{}{tail}", ["", &root].join("/"));
+                    assert_eq!(violation(&path), None, "rejected {path}");
+                }
+            }
+            let relative = [root.as_str(), "person"].join("/");
+            let other_root = ["", &format!("{root}extra"), "person"].join("/");
+            for path in [relative, other_root] {
+                assert_eq!(violation(&path), None, "rejected {path}");
+            }
+        }
+    }
+
+    #[test]
+    fn checks_private_roots_after_punctuation_only_at_path_boundaries() {
+        for root in PRIVATE_ROOTS
+            .iter()
+            .flat_map(|root| root_case_variants(root))
+        {
+            let path = ["", &root, "person"].join("/");
+            for prefix in ["!", "*", "**", ":", "file:", "note:!", "—"] {
+                let value = format!("{prefix}{path}");
+                assert_eq!(
+                    violation(&value),
+                    Some("private filesystem location"),
+                    "{value}"
+                );
+            }
+            for prefix in ["a", "Z", "0", ".", "_", "-", "é", "９", "relative"] {
+                let value = format!("{prefix}{path}");
+                assert_eq!(violation(&value), None, "rejected {value}");
+            }
+        }
+        for prefix in ["!", "*", "**", ":", "file:"] {
+            for path in [
+                "/target/",
+                "/usr/bin/tool",
+                "/arbitrary/token",
+                "/[a-z]+/gi",
+            ] {
+                let value = format!("{prefix}{path}");
+                assert_eq!(violation(&value), None, "rejected {value}");
+            }
+        }
+    }
+
+    #[test]
+    fn checks_file_url_paths_without_requiring_an_authority() {
+        for slash_count in [1, 3] {
+            let prefix = format!("file:{}", "/".repeat(slash_count));
+            for root in PRIVATE_ROOTS
+                .iter()
+                .flat_map(|root| root_case_variants(root))
+            {
+                let value = format!("{prefix}{}", [root.as_str(), "person"].join("/"));
+                assert_eq!(
+                    violation(&value),
+                    Some("private filesystem location"),
+                    "{value}"
+                );
+            }
+            for path in ["", "usr/bin/tool", "dev/null", "home", "var/home/"] {
+                let value = format!("{prefix}{path}");
+                assert_eq!(violation(&value), None, "rejected {value}");
+            }
+        }
+        let host = ["service", "invalid"].join(".");
+        let value = ["file:", "", &host, "usr/bin/tool"].join("/");
+        assert_eq!(violation(&value), Some("unapproved URL host"));
+        let value = ["file:", "", "github.com", "usr/bin/tool"].join("/");
+        assert_eq!(violation(&value), None);
+        let value = ["file:", "", "", "", &host, "path"].join("/");
+        assert_eq!(violation(&value), None);
+    }
+
+    #[test]
+    fn rejects_windows_drive_paths_in_file_urls() {
+        for slash_count in [1, 3] {
+            for drive in ["C", "z"] {
+                for separator in ["/", "\\"] {
+                    let path = [format!("{drive}:"), "capture".into()].join(separator);
+                    for scheme in ["file", "FILE", "FiLe"] {
+                        let value = format!("{scheme}:{}{path}", "/".repeat(slash_count));
+                        assert_eq!(
+                            violation(&value),
+                            Some("private filesystem location"),
+                            "missed {value}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn limits_slash_prefixed_drive_detection_to_url_paths() {
+        let drive = ["C:", "capture"].join("/");
+        for prefix in ["/", "note:/", "relative/", "file:////", "https://github.com/"] {
+            let value = format!("{prefix}{drive}");
+            assert_eq!(violation(&value), None, "rejected {value}");
+        }
+        let value = format!("https:///{drive}");
+        assert_eq!(violation(&value), Some("private filesystem location"));
+    }
+
+    #[test]
+    fn checks_only_scheme_relative_hosts_with_listed_dns_suffixes() {
+        for suffix in DNS_SUFFIXES {
+            let host = ["service", suffix].join(".");
+            for host in [host.clone(), host.to_ascii_uppercase()] {
+                for tail in ["", "/path", ":443/path", "?query", "#fragment"] {
+                    let value = ["", "", &format!("{host}{tail}")].join("/");
+                    assert_eq!(violation(&value), Some("unapproved URL host"), "{value}");
+                }
+            }
+        }
+        for host in HOSTS {
+            for tail in ["", "/path", ":443/path", "?query", "#fragment"] {
+                let value = ["", "", &format!("{}{tail}", host.to_ascii_uppercase())].join("/");
+                assert_eq!(violation(&value), None, "rejected {value}");
+            }
+        }
+        for authority in [
+            "",
+            "comment",
+            "comment/path",
+            "state.rs",
+            "a..com",
+            "-",
+            "text+value.com",
+        ] {
+            let value = ["", "", authority].join("/");
+            assert_eq!(violation(&value), None, "rejected {value}");
+        }
+        let host = ["service", "invalid"].join(".");
+        for prefix in ["", "/", "///", "!//", "word//"] {
+            let value = format!("{prefix}{host}/path");
+            assert_eq!(violation(&value), None, "rejected {value}");
+        }
+        let authority = format!("user:token@{host}:443");
+        let value = ["", "", &authority, "path"].join("/");
+        assert_eq!(violation(&value), Some("unapproved URL host"));
+    }
+
+    #[test]
+    fn rejects_home_relative_locations_with_or_without_a_user() {
+        for home in ["~", "~person"] {
+            for tail in ["capture", "data/capture", "/"] {
+                let path = [home, tail].join("/");
+                assert_eq!(
+                    violation(&path),
+                    Some("private filesystem location"),
+                    "missed {path}"
+                );
+            }
+            for path in [home.to_owned(), [home, ""].join("/")] {
+                assert_eq!(violation(&path), None, "rejected {path}");
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_tree_escapes() {
+        for parts in [
+            vec!["..", "capture"],
+            vec!["cache", "..", "..", "capture"],
+            vec![".", "..", "capture"],
+        ] {
+            for separator in ["/", "\\"] {
+                let path = parts.join(separator);
+                assert_eq!(
+                    violation(&path),
+                    Some("path escapes the working tree"),
+                    "missed {path}"
+                );
+            }
+        }
+        let inside = ["cache", "..", "capture"].join("/");
+        assert_eq!(violation(&inside), None);
     }
 
     #[test]
@@ -356,90 +576,76 @@ mod tests {
         let host = ["service", "invalid"].join(".");
         let url = ["http:", "", &host, "2000/svg"].join("/");
         for value in [url.clone(), format!(r#"xmlns="{url}""#)] {
-            assert_eq!(violation(&value), Some("unapproved URL host"), "missed {value}");
+            assert_eq!(
+                violation(&value),
+                Some("unapproved URL host"),
+                "missed {value}"
+            );
         }
     }
 
     #[test]
     fn permits_markup_closing_tags_and_complete_svg() {
         for value in [
+            "</div>",
+            "<div>\ncontent\n</div>",
             "<svg></svg>",
-            "<g></g>",
-            "<A0-_.:z></A0-_.:z>",
-            "<g/></g>",
-            concat!("<g", "\t>", "<", "/", "g>"),
             r#"<svg xmlns="http://www.w3.org/2000/svg"><g fill="currentColor"></g></svg>"#,
             include_str!(concat!(".", ".", "/", "assets/icons/wireroom-mono.svg")),
+        ] {
+            assert_eq!(violation(value), None, "rejected {value}");
+            for line in value.lines() {
+                assert_eq!(violation(line), None, "rejected line {line}");
+            }
+        }
+    }
+
+    #[test]
+    fn permits_regular_expressions_and_other_slash_tokens() {
+        for value in [
+            r"const words = /[a-z]+/gi;",
+            r"const opening = /</g;",
+            "/",
+            "//",
+            "///",
+            "/*",
+            "/**",
+            "/dev/null",
+            "/usr/bin/tool",
+            "/private/capture",
+            "/var/log/messages",
+            "/run/service/socket",
+            "/arbitrary/token",
         ] {
             assert_eq!(violation(value), None, "rejected {value}");
         }
     }
 
     #[test]
-    fn rejects_closing_tags_without_an_earlier_matching_opening_tag() {
-        for name in ["private", "svg", "g", "A0-_.:z"] {
-            let closing = ["<", "/", name, ">"].concat();
-            for value in [
-                closing.clone(),
-                format!("<unrelated>{closing}"),
-                format!("{closing}<{name}>"),
-                format!("<{name}extra>{closing}"),
-                format!("<{}>{closing}", name.to_uppercase()),
-            ] {
-                assert_eq!(
-                    violation(&value),
-                    Some("absolute filesystem path"),
-                    "missed {value}"
-                );
-            }
-        }
-        let closing = ["<", "/", "private", ">"].concat();
-        assert_eq!(
-            violation(&format!("<g>{closing}")),
-            Some("absolute filesystem path")
-        );
-    }
-
-    #[test]
     fn rejects_paths_inside_and_outside_angle_brackets() {
-        let path = ["", "private", "capture"].join("/");
+        let path = ["", "home", "person"].join("/");
         for value in [path.clone(), format!("<{path}>"), format!("<g></g>{path}")] {
             assert_eq!(
                 violation(&value),
-                Some("absolute filesystem path"),
+                Some("private filesystem location"),
                 "missed {value}"
             );
         }
     }
 
     #[test]
-    fn rejects_slash_tokens_that_are_not_well_formed_closing_tags() {
-        for name in [
-            "svg", "g", "1svg", "_svg", "é", "svg ", "svg attr", "svg/", "svg!",
+    fn permits_bare_hosts_and_property_access() {
+        for value in [
+            "service.invalid",
+            "SERVICE.INVALID",
+            "service.invalid/path",
+            "service.invalid:443",
+            "state.app",
+            "result.org",
+            "console.info(value)",
+            "GitHub.com",
         ] {
-            let token = ["", name].join("/");
-            for value in [token.clone(), format!("<{token}")] {
-                assert_eq!(
-                    violation(&value),
-                    Some("absolute filesystem path"),
-                    "missed {value}"
-                );
-            }
-            let value = format!("<{token}>");
-            assert_eq!(
-                violation(&value),
-                Some("absolute filesystem path"),
-                "missed {value}"
-            );
-        }
-    }
-
-    #[test]
-    fn checks_bare_hosts_case_insensitively() {
-        let host = ["SERVICE", "INVALID"].join(".");
-        assert_eq!(violation(&host), Some("unapproved host"));
-        for host in ["GitHub.com", "GITHUB.COM"] {
-            assert_eq!(violation(host), None, "rejected {host}");
+            assert_eq!(violation(value), None, "rejected {value}");
         }
     }
 
@@ -452,11 +658,19 @@ mod tests {
             ["https:", "", &format!("{host}?query")].join("/"),
             ["https:", "", &format!("{host}#fragment")].join("/"),
         ] {
-            assert_eq!(violation(&address), Some("unapproved URL host"), "missed {address}");
+            assert_eq!(
+                violation(&address),
+                Some("unapproved URL host"),
+                "missed {address}"
+            );
         }
         for host in [host.as_str(), "service"] {
             let address = format!("git@{host}:team/repo");
-            assert_eq!(violation(&address), Some("unapproved host"), "missed {address}");
+            assert_eq!(
+                violation(&address),
+                Some("unapproved host"),
+                "missed {address}"
+            );
         }
         let email = ["person", &host].join("@");
         assert_eq!(violation(&email), Some("e-mail address"));
@@ -480,26 +694,61 @@ mod tests {
     }
 
     #[test]
-    fn distinguishes_backslash_text_from_absolute_windows_paths() {
+    fn distinguishes_backslash_text_from_windows_locations() {
         for value in [r"\", r"\n", r"\\n", r"\foo", r"\\host", r"C:foo"] {
             assert_eq!(violation(value), None, "rejected {value}");
         }
         for value in [
             ["", "", "host", "share"].join("\\"),
+            ["", "", "host", ""].join("\\"),
+            [concat!("\\", "\\", "host"), "share"].join("/"),
             ["C:", "foo"].join("\\"),
             ["C:", "foo"].join("/"),
+            ["z:", ""].join("/"),
+            ["z:", ""].join("\\"),
         ] {
             assert_eq!(
                 violation(&value),
-                Some("absolute filesystem path"),
+                Some("private filesystem location"),
                 "missed {value}"
             );
         }
     }
 
     #[test]
+    fn checks_direct_and_doubled_unc_prefixes_with_a_host_and_separator() {
+        for width in [1, 2] {
+            let separator = "\\".repeat(width);
+            for tail in ["", "share", "share/path"] {
+                let path = ["", "", "host", tail].join(&separator);
+                for value in [path.clone(), format!("let path = \"{path}\";")] {
+                    assert_eq!(
+                        violation(&value),
+                        Some("private filesystem location"),
+                        "{value}"
+                    );
+                }
+                let path = format!("{}host/{tail}", separator.repeat(2));
+                assert_eq!(
+                    violation(&path),
+                    Some("private filesystem location"),
+                    "{path}"
+                );
+            }
+            for tail in ["", "host"] {
+                let path = format!("{}{tail}", separator.repeat(2));
+                assert_eq!(violation(&path), None, "rejected {path}");
+            }
+        }
+        for count in 1..=8 {
+            let path = "\\".repeat(count);
+            assert_eq!(violation(&path), None, "rejected {path}");
+        }
+    }
+
+    #[test]
     fn reports_one_based_diff_line_numbers() {
-        let added = format!("+{}", ["", "private", "capture"].join("/"));
+        let added = format!("+{}", ["", "home", "person"].join("/"));
         let diff = [
             "diff --git a/file b/file",
             "--- a/file",
@@ -512,7 +761,7 @@ mod tests {
         .join("\n");
         assert_eq!(
             check_added_text("test", &diff),
-            Err("commit test: absolute filesystem path in added text at diff line 7".into())
+            Err("commit test: private filesystem location in added text at diff line 7".into())
         );
     }
 
@@ -523,168 +772,89 @@ mod tests {
 
     #[test]
     fn checks_added_lines_starting_with_two_pluses() {
-        let path = ["", "private", "capture"].join("/");
+        let path = ["", "home", "person"].join("/");
         for prefix in ["++ ", "++prefix "] {
             let diff = added_text_diff("notes.txt", &format!("{prefix}{path}"));
             assert_eq!(
                 check_added_text("test", &diff),
-                Err("commit test: absolute filesystem path in added text at diff line 4".into()),
+                Err("commit test: private filesystem location in added text at diff line 4".into()),
                 "{diff}"
             );
         }
     }
 
     #[test]
-    fn added_header_text_does_not_change_current_file() {
-        let pattern = ["", "target", ""].join("/");
-        let header_text = ["b", ".gitignore"].join("/");
+    fn added_header_text_does_not_end_the_hunk() {
+        let path = ["", "home", "person"].join("/");
         let diff = format!(
-            "diff --git a/notes.txt b/notes.txt\n+++ b/notes.txt\n@@ -0,0 +1,2 @@\n+++ {header_text}\n+{pattern}"
+            "diff --git a/notes.txt b/notes.txt\n+++ b/notes.txt\n@@ -0,0 +1,2 @@\n+++ b/.gitignore\n+{path}"
         );
         assert_eq!(
             check_added_text("test", &diff),
-            Err("commit test: absolute filesystem path in added text at diff line 5".into())
+            Err("commit test: private filesystem location in added text at diff line 5".into())
         );
     }
 
     #[test]
-    fn permits_anchored_gitignore_patterns() {
-        for file in [".gitignore".to_owned(), ["nested", ".gitignore"].join("/")] {
-            for prefix in ["", "!"] {
-                let pattern = [prefix, "target", ""].join("/");
-                let diff = added_text_diff(&file, &pattern);
+    fn permits_anchored_patterns_in_every_file() {
+        for file in [
+            ".gitignore",
+            "nested/.gitignore",
+            "notes.txt",
+            ".dockerignore",
+        ] {
+            for pattern in ["/target/", "!/target/", "# /target/", " /target/"] {
+                let diff = added_text_diff(file, pattern);
                 assert_eq!(check_added_text("test", &diff), Ok(()), "{diff}");
             }
         }
     }
 
     #[test]
-    fn handles_quoted_gitignore_headers() {
-        for file in [
-            ".gitignore".to_owned(),
-            ["nested directory", ".gitignore"].join("/"),
-            [r"nested\tname", ".gitignore"].join("/"),
-        ] {
-            let header = ["b", &file].join("/");
-            for prefix in ["", "!"] {
-                let pattern = [prefix, "target", ""].join("/");
-                let diff = format!(
-                    "diff --git \"a/{file}\" \"{header}\"\n+++ \"{header}\"\n@@ -0,0 +1 @@\n+{pattern}"
-                );
-                assert_eq!(check_added_text("test", &diff), Ok(()), "{diff}");
-            }
-        }
-    }
-
-    #[test]
-    fn rejects_anchored_patterns_outside_gitignore() {
-        let pattern = ["", "target", ""].join("/");
-        for file in [
-            "notes.txt".to_owned(),
-            ".dockerignore".to_owned(),
-            ".gitignore.backup".to_owned(),
-            [".gitignore", "notes.txt"].join("/"),
-        ] {
-            let diff = added_text_diff(&file, &pattern);
-            assert_eq!(
-                check_added_text("test", &diff),
-                Err("commit test: absolute filesystem path in added text at diff line 4".into()),
-                "{diff}"
-            );
-        }
-    }
-
-    #[test]
-    fn checks_gitignore_comments_and_unanchored_lines_unchanged() {
-        let pattern = ["", "target", ""].join("/");
-        for prefix in ["# ", " # ", "stray ", " "] {
-            let diff = added_text_diff(".gitignore", &format!("{prefix}{pattern}"));
-            assert_eq!(
-                check_added_text("test", &diff),
-                Err("commit test: absolute filesystem path in added text at diff line 4".into()),
-                "{diff}"
-            );
-        }
-    }
-
-    #[test]
-    fn keeps_other_checks_for_gitignore_patterns() {
-        let host = ["service", "invalid"].join(".");
-        let email = ["person", &host].join("@");
-        let url = ["https:", "", &host, "data"].join("/");
-        for (text, reason) in [
-            (email, "e-mail address"),
-            (host, "unapproved host"),
-            (url, "unapproved URL host"),
-            (["..", "capture"].join("/"), "path escapes the working tree"),
-            (
-                ["cache", "..", "..", "capture"].join("/"),
-                "path escapes the working tree",
-            ),
-        ] {
-            let anchored = ["", &text].join("/");
-            let negated = ["!", &anchored].concat();
-            for pattern in [&text, &anchored, &negated] {
-                let diff = added_text_diff(".gitignore", pattern);
-                assert_eq!(
-                    check_added_text("test", &diff),
-                    Err(format!("commit test: {reason} in added text at diff line 4")),
-                    "{diff}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn checks_paths_after_the_gitignore_anchor() {
-        let path = ["", "private", "capture"].join("/");
-        for prefix in ["", "!"] {
-            for pattern in [
-                [prefix, &path].join("/"),
-                format!("{} {path}", [prefix, "target"].join("/")),
-            ] {
-                let diff = added_text_diff(".gitignore", &pattern);
-                assert_eq!(
-                    check_added_text("test", &diff),
-                    Err("commit test: absolute filesystem path in added text at diff line 4".into()),
-                    "{diff}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn updates_current_file_and_preserves_diff_line_numbers() {
-        let pattern = ["", "target", ""].join("/");
-        let diff = [
-            added_text_diff(".gitignore", &pattern),
-            added_text_diff("notes.txt", &pattern),
+    fn skips_headers_until_each_hunk() {
+        let path = ["", "home", "person"].join("/");
+        let header = format!("+++ {path}");
+        let first = [
+            "diff --git a/notes.txt b/notes.txt",
+            &header,
+            "@@ -1 +1 @@",
+            "-old text",
+            "+safe text",
         ]
         .join("\n");
+        let diff = format!("{first}\ndiff --git a/next.txt b/next.txt\n{header}");
+        assert_eq!(check_added_text("test", &diff), Ok(()));
+        let with_hunk = format!("{diff}\n@@ -0,0 +1 @@\n+{path}");
         assert_eq!(
-            check_added_text("test", &diff),
-            Err("commit test: absolute filesystem path in added text at diff line 8".into())
+            check_added_text("test", &with_hunk),
+            Err("commit test: private filesystem location in added text at diff line 9".into())
         );
     }
 
     #[test]
-    fn handles_deleted_files_and_clears_current_file() {
-        let pattern = ["", "target", ""].join("/");
-        let null = ["", "dev", "null"].join("/");
-        let old = ["a", ".gitignore"].join("/");
-        let new = ["b", ".gitignore"].join("/");
+    fn handles_deleted_files_without_skipping_later_additions() {
+        let path = ["", "home", "person"].join("/");
         let diff = format!(
-            "{}\ndiff --git {old} {new}\n--- {old}\n+++ {null}\n@@ -1 +0,0 @@\n-{pattern}",
-            added_text_diff(".gitignore", &pattern)
+            "diff --git a/notes.txt b/notes.txt\n--- a/notes.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-{path}"
         );
         assert_eq!(check_added_text("test", &diff), Ok(()));
-        let without_file = format!("{diff}\n+{pattern}");
+        let next_file = format!("{diff}\n{}", added_text_diff("next.txt", &path));
         assert_eq!(
-            check_added_text("test", &without_file),
-            Err("commit test: absolute filesystem path in added text at diff line 10".into())
+            check_added_text("test", &next_file),
+            Err("commit test: private filesystem location in added text at diff line 9".into())
         );
-        let next_file = format!("{diff}\n{}", added_text_diff(".gitignore", &pattern));
-        assert_eq!(check_added_text("test", &next_file), Ok(()));
+    }
+
+    #[test]
+    fn checks_private_locations_in_gitignore_without_an_exemption() {
+        let path = ["", "home", "person"].join("/");
+        for prefix in ["", "# ", " ", "/target/ "] {
+            let diff = added_text_diff(".gitignore", &format!("{prefix}{path}"));
+            assert_eq!(
+                check_added_text("test", &diff),
+                Err("commit test: private filesystem location in added text at diff line 4".into())
+            );
+        }
     }
 
     #[test]

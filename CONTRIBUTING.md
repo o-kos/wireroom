@@ -47,11 +47,14 @@ git config core.hooksPath .githooks
 ```
 
 The pre-push hook refuses direct pushes to `main`: changes reach it through a Pull
-Request. It checks outgoing commit messages, filenames and added text for absolute
-filesystem paths, paths escaping the tree, e-mail addresses and unapproved hosts or
-URLs. The small generic host allowlist lives in `scripts/content_policy.rs`. It is a
-text hygiene check, not a secrets scanner. Avoid binary additions that require text
-review without a separate review of their contents.
+Request. It checks outgoing commit messages, filenames and added text for private
+filesystem locations (home directories, home-relative paths, mount locations, Windows
+drive paths and UNC paths), paths escaping the tree, e-mail addresses and unapproved
+URL or remote-path hosts. Other slash-prefixed tokens and bare host-like names pass.
+The small generic host allowlist lives in `scripts/content_policy.rs`.
+Environment-specific names belong in `dmd.localPolicy`. This is a text hygiene check,
+not a secrets scanner. Avoid binary additions that require text review without a
+separate review of their contents.
 
 The hook reports whether `dmd.localPolicy` is configured. When configured, it must name
 an executable file; empty or invalid values fail the gate. Relative values are relative
@@ -59,6 +62,22 @@ to the repository top level. The hook resolves the value to an absolute path bef
 validating it and executes exactly that path, with the same arguments and ref-update
 input as pre-push, propagating failure. Keep environment-specific policy outside the tree.
 Configure it with `git config dmd.localPolicy <executable>`.
+
+The content policy runs on every push. The hook caches its compiled binary in
+`target/policy/`, rebuilding when the source hash changes or the binary is missing.
+Policy and hook tests are ignored by the default test run. Run them by hand with:
+
+```sh
+cargo test -p dmd-protocol --test policy --locked -- --ignored
+```
+
+The hook runs these tests when any outgoing commit touches `scripts/content_policy.rs`,
+`.githooks/pre-push` or `crates/protocol/tests/policy.rs`. For a new branch, it considers
+only commits not already on the destination remote. Both CI tiers run the same command
+when those paths differ from the Pull Request base SHA, the push event's `before` SHA
+for a push to `main`, or `HEAD^` for a manual run. If the base is empty, all zeros or
+unavailable in the fetched history, CI runs the policy tests unconditionally. The
+`status` job tests its own decision logic separately.
 
 Run the full local gate before every push. It stops at the first failed command and
 explains the failure:
@@ -90,8 +109,8 @@ Administrators are not included in the protection, so an administrator can still
 to or merge into `main` directly. For that reason the hook, an early local copy of the
 gate, also refuses direct pushes to `main`. Server-side merges do not execute it.
 
-Draft Pull Requests run formatting, default and native lints, policy tests and
-core-independent native tests on Linux, producing `ci/quick`. Ready Pull Requests,
+Draft Pull Requests run formatting, default and native lints, conditional policy tests
+and core-independent native tests on Linux, producing `ci/quick`. Ready Pull Requests,
 pushes to `main` and manual runs require Linux, Windows and macOS tests and release
 builds, producing `ci/full`. Skipped results do not count as successes. The required
 check on `main` is `ci/full`, and the branch must be up to date with `main` before
@@ -283,7 +302,9 @@ do not negotiate with each other; the orchestrator decides which findings to acc
 or decline. Fix accepted findings in focused commits and rerun affected checks. Route
 out-of-scope findings to separate Issues.
 
-Repeat with the same reviewer until a round returns nothing substantive. Each later
+Repeat with the same reviewer until a round returns nothing substantive, for at most three
+rounds. If substantive findings remain after the third round, stop and give the owner a
+summary of them with a recommendation; the owner decides how to proceed. Each later
 prompt names what was fixed and what was declined, explains each decision, and asks
 the reviewer to challenge the reasoning behind every decline. A reviewer that never
 disagrees is worth nothing.
