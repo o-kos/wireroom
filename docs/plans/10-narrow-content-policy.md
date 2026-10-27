@@ -67,11 +67,11 @@ reviewer: Codex `gpt-5.6-sol`, high reasoning effort, read-only.
 
 ## Implementation steps
 
-- [ ] Replace the absolute-path check with the private-location check.
-- [ ] Stop reporting bare host-like tokens; keep URL, remote-path and e-mail checks.
-- [ ] Remove the closing-tag matching, the `.gitignore` exemption, the file tracking it
+- [x] Replace the absolute-path check with the private-location check.
+- [x] Stop reporting bare host-like tokens; keep URL, remote-path and e-mail checks.
+- [x] Remove the closing-tag matching, the `.gitignore` exemption, the file tracking it
       used and constants left unused, keeping the header and hunk separation.
-- [ ] Update the tests: private locations of every listed kind are rejected; closing
+- [x] Update the tests: private locations of every listed kind are rejected; closing
       tags on their own line, regular-expression literals (including one matching a
       less-than sign), property access ending in a DNS suffix, anchored ignore patterns
       and other slash-prefixed tokens pass; tree escapes, unapproved URLs, remote paths

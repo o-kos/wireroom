@@ -286,16 +286,12 @@ fn push_hook_enforces_content_and_local_policy() {
         assert!(!stderr.contains("no local policy hook configured"));
     }
     git(&["config", "--unset", "dmd.localPolicy"]);
-    std::fs::write(
-        fixture.join("note.txt"),
-        ["", "private", "capture"].join("/"),
-    )
-    .unwrap();
+    std::fs::write(fixture.join("note.txt"), ["", "home", "person"].join("/")).unwrap();
     git(&["add", "note.txt"]);
     git(&["commit", "-m", "Add a policy fixture"]);
     let bad = hook(&git(&["rev-parse", "HEAD"]), "topic");
     assert!(!bad.status.success());
-    assert!(String::from_utf8_lossy(&bad.stderr).contains("absolute filesystem path"));
+    assert!(String::from_utf8_lossy(&bad.stderr).contains("private filesystem location"));
     let local = fixture.join("local-policy");
     std::fs::write(&local, "exit 1\n").unwrap();
     std::fs::set_permissions(&local, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -384,11 +380,7 @@ fn push_hook_checks_new_branches_against_only_the_destination() {
     git(&["remote", "add", "secondary", "."]);
     git(&["commit", "--allow-empty", "-m", "Add safe base"]);
     let base = git(&["rev-parse", "HEAD"]);
-    std::fs::write(
-        fixture.join("note.txt"),
-        ["", "private", "capture"].join("/"),
-    )
-    .unwrap();
+    std::fs::write(fixture.join("note.txt"), ["", "home", "person"].join("/")).unwrap();
     git(&["add", "note.txt"]);
     git(&["commit", "-m", "Add policy fixture"]);
     let head = git(&["rev-parse", "HEAD"]);
@@ -401,7 +393,7 @@ fn push_hook_checks_new_branches_against_only_the_destination() {
         }
         let rejected = invoke_hook(&fixture, &"0".repeat(40), &head, "topic");
         assert!(!rejected.status.success());
-        assert!(String::from_utf8_lossy(&rejected.stderr).contains("absolute filesystem path"));
+        assert!(String::from_utf8_lossy(&rejected.stderr).contains("private filesystem location"));
     }
     git(&["update-ref", "refs/remotes/origin/topic", &head]);
     let accepted = invoke_hook(&fixture, &"0".repeat(40), &head, "topic");
