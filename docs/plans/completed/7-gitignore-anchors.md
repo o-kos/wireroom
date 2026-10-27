@@ -32,6 +32,11 @@ reviewer: Codex `gpt-5.6-sol`, high reasoning effort, read-only.
   `+++` header. A header of `/dev/null` belongs to no file; a quoted header is
   unquoted before its `b/` prefix is removed. A file whose last path component is
   `.gitignore` is an ignore file.
+- Headers are told from content by the diff's structure: a line starting with `diff `
+  opens a file's header section, the only place a `+++` line names the file, and a line
+  starting with `@@` opens hunk content, where every `+` line is added text. Review
+  round 1 showed that matching `+++` anywhere let an added line beginning with `++`
+  escape the check or re-attribute later lines to an ignore file.
 - In an ignore file, a pattern line that starts with `/`, or with `!/` for a negated
   pattern, is checked without that anchoring `/`. Every other check, including tree
   escapes through `..`, still applies to the rest of the line.
@@ -56,23 +61,23 @@ reviewer: Codex `gpt-5.6-sol`, high reasoning effort, read-only.
       a nested `.gitignore`; the same line is rejected in another file and in a
       `.gitignore` comment; an e-mail address, an unapproved host and a `..` escape are
       rejected in a `.gitignore`; a deleted file's lines and a quoted header are handled.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] A diff adding an anchored pattern to `.gitignore` or to a nested `.gitignore` passes
+- [x] A diff adding an anchored pattern to `.gitignore` or to a nested `.gitignore` passes
       the content policy.
-- [ ] The same line added to any other file is still rejected as an absolute path.
-- [ ] An e-mail address or unapproved host added to `.gitignore` is still rejected.
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
+- [x] The same line added to any other file is still rejected as an absolute path.
+- [x] An e-mail address or unapproved host added to `.gitignore` is still rejected.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
       (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo clippy -p dmd --features native --all-targets --locked` with an empty core
+- [x] `cargo clippy -p dmd --features native --all-targets --locked` with an empty core
       directory (see `CONTRIBUTING.md` for exact commands)
-- [ ] `cargo test --locked`
-- [ ] `cargo test -p dmd-native --locked`
-- [ ] `cargo build --release --locked`, after the gate passes
+- [x] `cargo test --locked`
+- [x] `cargo test -p dmd-native --locked`
+- [x] `cargo build --release --locked`, after the gate passes
 
 ## Post-completion
 
