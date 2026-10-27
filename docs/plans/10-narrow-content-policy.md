@@ -30,6 +30,9 @@ reviewer: Codex `gpt-5.6-sol`, high reasoning effort, read-only.
 
 ## Decisions
 
+Mechanical review round 1 found gaps in root matching, escaped UNC prefixes and URL
+authority handling; the refinements below close them without restoring broad checks.
+
 - A token is a private location when it is one of:
   - a Unix or macOS home directory: a path from the filesystem root through `home`,
     `Users`, `root` or `var` and then `home`, followed by at least one more path segment;
@@ -38,18 +41,32 @@ reviewer: Codex `gpt-5.6-sol`, high reasoning effort, read-only.
   - a mount location: a path from the filesystem root through `mnt`, `media`, `run` and
     then `media`, or `Volumes`, followed by at least one more path segment;
   - a Windows drive path (a letter, a colon, then a slash or backslash) or a UNC path
-    (two backslashes, a host, then a separator).
+    (two backslashes, a host, then a separator), including the spelling with each
+    backslash doubled in a string literal.
+  Every listed rooted-path component is compared ASCII-case-insensitively, including
+  both components of two-component roots. A listed root can start anywhere in a token
+  if the preceding character is absent or is not a letter, digit, dot, underscore or
+  hyphen; it still requires at least one further nonempty path segment. Punctuation
+  does not make arbitrary slash-prefixed text a private location. UNC detection still
+  requires a nonempty host and a following separator, so incomplete backslash runs pass.
   It is reported as a "private filesystem location". Any other token that starts with a
   slash is no longer reported.
 - Tree escapes through `..` stay reported as today.
 - URLs stay checked against the host allowlist, and remote paths (a user, an at sign, a
   host, a colon and a path) and e-mail addresses stay reported. A host-like token without
-  a scheme or `@` is no longer reported.
+  a scheme or `@` is no longer reported, except for a scheme-relative URL: a token
+  starting with exactly two slashes and a host-like authority whose final label is in
+  the DNS-suffix list. Only this check uses that list; comment markers and other text
+  after two slashes pass. URLs with an empty authority have no host to check and apply
+  the private-location rules to their path. This permits harmless system paths in
+  triple-slash `file` URLs while rejecting private paths in both single-slash and
+  triple-slash forms.
 - The closing-tag matching (`strip_markup_closing_tag`) and the anchored `.gitignore`
   exemption are removed, together with the file tracking that only the exemption used.
   `check_added_text` keeps separating headers from hunk text by `diff ` and `@@` lines,
   and keeps checking every added line, including one whose text begins with `++`.
-- Constants that only the removed checks used are removed.
+- Constants that only the removed checks used are removed, except for the DNS-suffix
+  list retained for scheme-relative URLs.
 - `CONTRIBUTING.md` describes the narrowed check and points environment-specific names
   to `dmd.localPolicy`.
 

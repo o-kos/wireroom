@@ -13,6 +13,10 @@ const HOSTS: &[&str] = &[
     "keepachangelog.com",
     "www.w3.org",
 ];
+const DNS_SUFFIXES: &[&str] = &[
+    "com", "org", "net", "io", "dev", "app", "edu", "gov", "co", "uk", "de", "fr", "ru", "info",
+    "biz", "xyz", "invalid",
+];
 
 fn escapes_tree(value: &str) -> bool {
     let mut depth = 0;
@@ -39,14 +43,28 @@ fn host_like(value: &str) -> bool {
 }
 
 fn private_rooted_location(token: &str) -> bool {
+    token.match_indices('/').any(|(index, _)| {
+        let boundary = token[..index]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_alphanumeric() && !matches!(c, '.' | '_' | '-'));
+        boundary && starts_with_private_root(&token[index..])
+    })
+}
+
+fn starts_with_private_root(token: &str) -> bool {
     let Some(path) = token.strip_prefix('/') else {
         return false;
     };
     let mut parts = path.split('/');
-    let private_root = match parts.next() {
-        Some("home" | "Users" | "root" | "mnt" | "media" | "Volumes") => true,
-        Some("var") => parts.next() == Some("home"),
-        Some("run") => parts.next() == Some("media"),
+    let private_root = match parts.next().unwrap_or("").to_ascii_lowercase().as_str() {
+        "home" | "users" | "root" | "mnt" | "media" | "volumes" => true,
+        "var" => parts
+            .next()
+            .is_some_and(|part| part.eq_ignore_ascii_case("home")),
+        "run" => parts
+            .next()
+            .is_some_and(|part| part.eq_ignore_ascii_case("media")),
         _ => false,
     };
     private_root && parts.any(|part| !part.is_empty())
@@ -65,10 +83,29 @@ fn windows_location(token: &str) -> bool {
         && bytes.get(1) == Some(&b':')
         && bytes.get(2).is_some_and(|c| matches!(c, b'/' | b'\\'));
     let unc = token
-        .strip_prefix("\\\\")
+        .strip_prefix("\\\\\\\\")
+        .or_else(|| token.strip_prefix("\\\\"))
         .and_then(|rest| rest.split_once(['\\', '/']))
         .is_some_and(|(host, _)| !host.is_empty());
     drive || unc
+}
+
+fn authority_host(authority: &str) -> &str {
+    authority
+        .rsplit('@')
+        .next()
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("")
+}
+
+fn scheme_relative_host(token: &str) -> Option<String> {
+    let address = token.strip_prefix("//")?;
+    let authority = address.split(['/', '?', '#']).next()?;
+    let host = authority_host(authority).to_ascii_lowercase();
+    let suffix = host.rsplit('.').next()?;
+    (host_like(&host) && DNS_SUFFIXES.contains(&suffix)).then_some(host)
 }
 
 fn token_violation(token: &str) -> Option<&'static str> {
@@ -78,15 +115,15 @@ fn token_violation(token: &str) -> Option<&'static str> {
     }
     if let Some((scheme, address)) = token.split_once("://")
         && !scheme.is_empty()
-        && !address.is_empty()
     {
         let authority = address.split(['/', '?', '#']).next().unwrap_or("");
-        let host_port = authority.rsplit('@').next().unwrap_or("");
-        let host = host_port
-            .split(':')
-            .next()
-            .unwrap_or("")
-            .to_ascii_lowercase();
+        if !authority.is_empty() {
+            let host = authority_host(authority).to_ascii_lowercase();
+            return (!HOSTS.contains(&host.as_str())).then_some("unapproved URL host");
+        }
+        return path_violation(address.split(['?', '#']).next().unwrap_or(""));
+    }
+    if let Some(host) = scheme_relative_host(token) {
         return (!HOSTS.contains(&host.as_str())).then_some("unapproved URL host");
     }
     if let Some((user, address)) = token.split_once('@') {
@@ -102,6 +139,10 @@ fn token_violation(token: &str) -> Option<&'static str> {
             return Some("e-mail address");
         }
     }
+    path_violation(token)
+}
+
+fn path_violation(token: &str) -> Option<&'static str> {
     if private_rooted_location(token) || home_relative_location(token) || windows_location(token) {
         return Some("private filesystem location");
     }
@@ -258,20 +299,44 @@ fn main() -> Result<(), String> {
 mod tests {
     use super::*;
 
+    const PRIVATE_ROOTS: &[&str] = &[
+        "home",
+        "Users",
+        "root",
+        "var/home",
+        "mnt",
+        "media",
+        "run/media",
+        "Volumes",
+    ];
+
+    fn root_case_variants(root: &str) -> Vec<String> {
+        let mut variants = vec![root.to_ascii_lowercase(), root.to_ascii_uppercase()];
+        for (index, _) in root.split('/').enumerate() {
+            let parts: Vec<_> = root
+                .split('/')
+                .enumerate()
+                .map(|(part_index, part)| {
+                    if part_index == index {
+                        part.to_ascii_uppercase()
+                    } else {
+                        part.to_ascii_lowercase()
+                    }
+                })
+                .collect();
+            variants.push(parts.join("/"));
+        }
+        variants
+    }
+
     #[test]
     fn rejects_private_rooted_locations() {
-        for root in [
-            "home",
-            "Users",
-            "root",
-            "var/home",
-            "mnt",
-            "media",
-            "run/media",
-            "Volumes",
-        ] {
+        for root in PRIVATE_ROOTS
+            .iter()
+            .flat_map(|root| root_case_variants(root))
+        {
             for tail in ["person", "person/capture", "person/", "/person"] {
-                let path = ["", root, tail].join("/");
+                let path = ["", &root, tail].join("/");
                 assert_eq!(
                     violation(&path),
                     Some("private filesystem location"),
@@ -283,26 +348,123 @@ mod tests {
 
     #[test]
     fn requires_a_segment_after_a_private_root() {
-        for root in [
-            "home",
-            "Users",
-            "root",
-            "var/home",
-            "mnt",
-            "media",
-            "run/media",
-            "Volumes",
-        ] {
-            for tail in ["", "/", "//"] {
-                let path = format!("{}{tail}", ["", root].join("/"));
-                assert_eq!(violation(&path), None, "rejected {path}");
+        for root in PRIVATE_ROOTS
+            .iter()
+            .flat_map(|root| root_case_variants(root))
+        {
+            for prefix in ["", "!", "**", "file:"] {
+                for tail in ["", "/", "//"] {
+                    let path = format!("{prefix}{}{tail}", ["", &root].join("/"));
+                    assert_eq!(violation(&path), None, "rejected {path}");
+                }
             }
-            let relative = [root, "person"].join("/");
+            let relative = [root.as_str(), "person"].join("/");
             let other_root = ["", &format!("{root}extra"), "person"].join("/");
             for path in [relative, other_root] {
                 assert_eq!(violation(&path), None, "rejected {path}");
             }
         }
+    }
+
+    #[test]
+    fn checks_private_roots_after_punctuation_only_at_path_boundaries() {
+        for root in PRIVATE_ROOTS
+            .iter()
+            .flat_map(|root| root_case_variants(root))
+        {
+            let path = ["", &root, "person"].join("/");
+            for prefix in ["!", "*", "**", ":", "file:", "note:!", "—"] {
+                let value = format!("{prefix}{path}");
+                assert_eq!(
+                    violation(&value),
+                    Some("private filesystem location"),
+                    "{value}"
+                );
+            }
+            for prefix in ["a", "Z", "0", ".", "_", "-", "é", "９", "relative"] {
+                let value = format!("{prefix}{path}");
+                assert_eq!(violation(&value), None, "rejected {value}");
+            }
+        }
+        for prefix in ["!", "*", "**", ":", "file:"] {
+            for path in [
+                "/target/",
+                "/usr/bin/tool",
+                "/arbitrary/token",
+                "/[a-z]+/gi",
+            ] {
+                let value = format!("{prefix}{path}");
+                assert_eq!(violation(&value), None, "rejected {value}");
+            }
+        }
+    }
+
+    #[test]
+    fn checks_file_url_paths_without_requiring_an_authority() {
+        for slash_count in [1, 3] {
+            let prefix = format!("file:{}", "/".repeat(slash_count));
+            for root in PRIVATE_ROOTS
+                .iter()
+                .flat_map(|root| root_case_variants(root))
+            {
+                let value = format!("{prefix}{}", [root.as_str(), "person"].join("/"));
+                assert_eq!(
+                    violation(&value),
+                    Some("private filesystem location"),
+                    "{value}"
+                );
+            }
+            for path in ["", "usr/bin/tool", "dev/null", "home", "var/home/"] {
+                let value = format!("{prefix}{path}");
+                assert_eq!(violation(&value), None, "rejected {value}");
+            }
+        }
+        let host = ["service", "invalid"].join(".");
+        let value = ["file:", "", &host, "usr/bin/tool"].join("/");
+        assert_eq!(violation(&value), Some("unapproved URL host"));
+        let value = ["file:", "", "github.com", "usr/bin/tool"].join("/");
+        assert_eq!(violation(&value), None);
+        let value = ["file:", "", "", "", &host, "path"].join("/");
+        assert_eq!(violation(&value), None);
+    }
+
+    #[test]
+    fn checks_only_scheme_relative_hosts_with_listed_dns_suffixes() {
+        for suffix in DNS_SUFFIXES {
+            let host = ["service", suffix].join(".");
+            for host in [host.clone(), host.to_ascii_uppercase()] {
+                for tail in ["", "/path", ":443/path", "?query", "#fragment"] {
+                    let value = ["", "", &format!("{host}{tail}")].join("/");
+                    assert_eq!(violation(&value), Some("unapproved URL host"), "{value}");
+                }
+            }
+        }
+        for host in HOSTS {
+            for tail in ["", "/path", ":443/path", "?query", "#fragment"] {
+                let value = ["", "", &format!("{}{tail}", host.to_ascii_uppercase())].join("/");
+                assert_eq!(violation(&value), None, "rejected {value}");
+            }
+        }
+        for authority in [
+            "",
+            "comment",
+            "comment/path",
+            "state.rs",
+            "a..com",
+            "-",
+            "text+value.com",
+        ] {
+            let value = ["", "", authority].join("/");
+            assert_eq!(violation(&value), None, "rejected {value}");
+        }
+        let host = ["service", "invalid"].join(".");
+        for prefix in ["", "/", "///", "!//", "word//"] {
+            let value = format!("{prefix}{host}/path");
+            assert_eq!(violation(&value), None, "rejected {value}");
+        }
+        let authority = format!("user:token@{host}:443");
+        let value = ["", "", &authority, "path"].join("/");
+        assert_eq!(violation(&value), Some("unapproved URL host"));
     }
 
     #[test]
@@ -503,6 +665,37 @@ mod tests {
                 Some("private filesystem location"),
                 "missed {value}"
             );
+        }
+    }
+
+    #[test]
+    fn checks_direct_and_doubled_unc_prefixes_with_a_host_and_separator() {
+        for width in [1, 2] {
+            let separator = "\\".repeat(width);
+            for tail in ["", "share", "share/path"] {
+                let path = ["", "", "host", tail].join(&separator);
+                for value in [path.clone(), format!("let path = \"{path}\";")] {
+                    assert_eq!(
+                        violation(&value),
+                        Some("private filesystem location"),
+                        "{value}"
+                    );
+                }
+                let path = format!("{}host/{tail}", separator.repeat(2));
+                assert_eq!(
+                    violation(&path),
+                    Some("private filesystem location"),
+                    "{path}"
+                );
+            }
+            for tail in ["", "host"] {
+                let path = format!("{}{tail}", separator.repeat(2));
+                assert_eq!(violation(&path), None, "rejected {path}");
+            }
+        }
+        for count in 1..=8 {
+            let path = "\\".repeat(count);
+            assert_eq!(violation(&path), None, "rejected {path}");
         }
     }
 
