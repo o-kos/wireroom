@@ -74,8 +74,10 @@ cargo test -p dmd-protocol --test policy --locked -- --ignored
 The hook runs these tests when any outgoing commit touches `scripts/content_policy.rs`,
 `.githooks/pre-push` or `crates/protocol/tests/policy.rs`. For a new branch, it considers
 only commits not already on the destination remote. Both CI tiers run the same command
-when those paths differ from the Pull Request base SHA, or from the previous commit for
-a push to `main` or a manual run. The `status` job tests its own decision logic separately.
+when those paths differ from the Pull Request base SHA, the push event's `before` SHA
+for a push to `main`, or `HEAD^` for a manual run. If the base is empty, all zeros or
+unavailable in the fetched history, CI runs the policy tests unconditionally. The
+`status` job tests its own decision logic separately.
 
 Run the full local gate before every push. It stops at the first failed command and
 explains the failure:

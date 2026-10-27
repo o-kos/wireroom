@@ -87,7 +87,11 @@ its tests ran on every `cargo test`. The owner kept the Rust policy and chose to
   `.githooks/pre-push` or `crates/protocol/tests/policy.rs`: the pre-push hook runs
   `cargo test -p dmd-protocol --test policy --locked -- --ignored` when an outgoing commit
   touches one of them, and CI runs the same command in a step that compares the change with its
-  base (the Pull Request base, or the previous commit on `main`).
+  base (the Pull Request base SHA, the push event's `before` SHA for `main`, or `HEAD^`
+  for a manual run). Following review round 5, an empty, all-zero or unavailable base runs
+  the policy tests unconditionally. Event values enter the script through environment
+  variables, and both CI jobs use the same step. The owner declined workflow test coverage
+  because the repository has no workflow test infrastructure.
 - `CONTRIBUTING.md` names the command for running the policy tests by hand.
 
 A rewrite of the policy in shell was rejected: URL, scheme-case, UNC and tree-escape handling,
