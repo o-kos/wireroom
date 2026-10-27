@@ -220,16 +220,28 @@ fn check_commit(commit: &str) -> Result<(), String> {
 
 fn check_added_text(commit: &str, diff: &str) -> Result<(), String> {
     let mut current_file = None;
+    let mut in_hunk = false;
     for (number, line) in diff.lines().enumerate() {
-        if let Some(header) = line.strip_prefix("+++ ") {
-            let path = header
-                .strip_prefix('"')
-                .and_then(|path| path.strip_suffix('"'))
-                .unwrap_or(header);
-            current_file = (path != "/dev/null").then(|| path.strip_prefix("b/").unwrap_or(path));
+        if line.starts_with("diff ") {
+            current_file = None;
+            in_hunk = false;
             continue;
         }
-        let Some(text) = line.strip_prefix('+').filter(|_| !line.starts_with("+++")) else {
+        if line.starts_with("@@") {
+            in_hunk = true;
+            continue;
+        }
+        if !in_hunk {
+            if let Some(header) = line.strip_prefix("+++ ") {
+                let path = header
+                    .strip_prefix('"')
+                    .and_then(|path| path.strip_suffix('"'))
+                    .unwrap_or(header);
+                current_file = (path != "/dev/null").then(|| path.strip_prefix("b/").unwrap_or(path));
+            }
+            continue;
+        }
+        let Some(text) = line.strip_prefix('+') else {
             continue;
         };
         let text = if current_file.is_some_and(|path| path.rsplit('/').next() == Some(".gitignore")) {
@@ -498,19 +510,41 @@ mod tests {
             &added,
         ]
         .join("\n");
-        for (text, line) in [(added.as_str(), 1), (diff.as_str(), 7)] {
-            assert_eq!(
-                check_added_text("test", text),
-                Err(format!(
-                    "commit test: absolute filesystem path in added text at diff line {line}"
-                ))
-            );
-        }
+        assert_eq!(
+            check_added_text("test", &diff),
+            Err("commit test: absolute filesystem path in added text at diff line 7".into())
+        );
     }
 
     fn added_text_diff(file: &str, text: &str) -> String {
         let header = ["b", file].join("/");
-        format!("+++ {header}\n@@ -0,0 +1 @@\n+{text}")
+        format!("diff --git a/{file} {header}\n+++ {header}\n@@ -0,0 +1 @@\n+{text}")
+    }
+
+    #[test]
+    fn checks_added_lines_starting_with_two_pluses() {
+        let path = ["", "private", "capture"].join("/");
+        for prefix in ["++ ", "++prefix "] {
+            let diff = added_text_diff("notes.txt", &format!("{prefix}{path}"));
+            assert_eq!(
+                check_added_text("test", &diff),
+                Err("commit test: absolute filesystem path in added text at diff line 4".into()),
+                "{diff}"
+            );
+        }
+    }
+
+    #[test]
+    fn added_header_text_does_not_change_current_file() {
+        let pattern = ["", "target", ""].join("/");
+        let header_text = ["b", ".gitignore"].join("/");
+        let diff = format!(
+            "diff --git a/notes.txt b/notes.txt\n+++ b/notes.txt\n@@ -0,0 +1,2 @@\n+++ {header_text}\n+{pattern}"
+        );
+        assert_eq!(
+            check_added_text("test", &diff),
+            Err("commit test: absolute filesystem path in added text at diff line 5".into())
+        );
     }
 
     #[test]
@@ -534,7 +568,9 @@ mod tests {
             let header = ["b", &file].join("/");
             for prefix in ["", "!"] {
                 let pattern = [prefix, "target", ""].join("/");
-                let diff = format!("+++ \"{header}\"\n@@ -0,0 +1 @@\n+{pattern}");
+                let diff = format!(
+                    "diff --git \"a/{file}\" \"{header}\"\n+++ \"{header}\"\n@@ -0,0 +1 @@\n+{pattern}"
+                );
                 assert_eq!(check_added_text("test", &diff), Ok(()), "{diff}");
             }
         }
@@ -552,7 +588,7 @@ mod tests {
             let diff = added_text_diff(&file, &pattern);
             assert_eq!(
                 check_added_text("test", &diff),
-                Err("commit test: absolute filesystem path in added text at diff line 3".into()),
+                Err("commit test: absolute filesystem path in added text at diff line 4".into()),
                 "{diff}"
             );
         }
@@ -565,7 +601,7 @@ mod tests {
             let diff = added_text_diff(".gitignore", &format!("{prefix}{pattern}"));
             assert_eq!(
                 check_added_text("test", &diff),
-                Err("commit test: absolute filesystem path in added text at diff line 3".into()),
+                Err("commit test: absolute filesystem path in added text at diff line 4".into()),
                 "{diff}"
             );
         }
@@ -592,7 +628,7 @@ mod tests {
                 let diff = added_text_diff(".gitignore", pattern);
                 assert_eq!(
                     check_added_text("test", &diff),
-                    Err(format!("commit test: {reason} in added text at diff line 3")),
+                    Err(format!("commit test: {reason} in added text at diff line 4")),
                     "{diff}"
                 );
             }
@@ -610,7 +646,7 @@ mod tests {
                 let diff = added_text_diff(".gitignore", &pattern);
                 assert_eq!(
                     check_added_text("test", &diff),
-                    Err("commit test: absolute filesystem path in added text at diff line 3".into()),
+                    Err("commit test: absolute filesystem path in added text at diff line 4".into()),
                     "{diff}"
                 );
             }
@@ -627,7 +663,7 @@ mod tests {
         .join("\n");
         assert_eq!(
             check_added_text("test", &diff),
-            Err("commit test: absolute filesystem path in added text at diff line 6".into())
+            Err("commit test: absolute filesystem path in added text at diff line 8".into())
         );
     }
 
@@ -636,15 +672,16 @@ mod tests {
         let pattern = ["", "target", ""].join("/");
         let null = ["", "dev", "null"].join("/");
         let old = ["a", ".gitignore"].join("/");
+        let new = ["b", ".gitignore"].join("/");
         let diff = format!(
-            "{}\n--- {old}\n+++ {null}\n@@ -1 +0,0 @@\n-{pattern}",
+            "{}\ndiff --git {old} {new}\n--- {old}\n+++ {null}\n@@ -1 +0,0 @@\n-{pattern}",
             added_text_diff(".gitignore", &pattern)
         );
         assert_eq!(check_added_text("test", &diff), Ok(()));
         let without_file = format!("{diff}\n+{pattern}");
         assert_eq!(
             check_added_text("test", &without_file),
-            Err("commit test: absolute filesystem path in added text at diff line 8".into())
+            Err("commit test: absolute filesystem path in added text at diff line 10".into())
         );
         let next_file = format!("{diff}\n{}", added_text_diff(".gitignore", &pattern));
         assert_eq!(check_added_text("test", &next_file), Ok(()));
