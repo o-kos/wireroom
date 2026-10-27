@@ -71,6 +71,29 @@ authority handling; the refinements below close them without restoring broad che
 - `CONTRIBUTING.md` describes the narrowed check and points environment-specific names
   to `dmd.localPolicy`.
 
+### Running the policy and its tests (owner decision after review round 4)
+
+The repository has almost no product code yet, while the policy was compiled on every push and
+its tests ran on every `cargo test`. The owner kept the Rust policy and chose to run it cheaply:
+
+- The pre-push hook compiles the policy only when its source changed since the last build: it
+  records the `git hash-object` of `scripts/content_policy.rs` beside the binary in
+  `target/policy/` and reuses the binary while the hash matches.
+- The tests that compile or exercise the policy (`policy_scripts_pass_their_tests` for the
+  content policy, and the `push_hook_*` tests, which compile it inside fixture repositories) are
+  marked `#[ignore]` with a reason, so `cargo test` skips them. `.github/scripts/ci_status.rs`
+  leaves `policy_scripts_pass_their_tests`; the `status` job already tests it on every run.
+- The policy tests run only when a change touches `scripts/content_policy.rs`,
+  `.githooks/pre-push` or `crates/protocol/tests/policy.rs`: the pre-push hook runs
+  `cargo test -p dmd-protocol --test policy --locked -- --ignored` when an outgoing commit
+  touches one of them, and CI runs the same command in a step that compares the change with its
+  base (the Pull Request base, or the previous commit on `main`).
+- `CONTRIBUTING.md` names the command for running the policy tests by hand.
+
+A rewrite of the policy in shell was rejected: URL, scheme-case, UNC and tree-escape handling,
+which review rounds 1 to 3 had to tighten, would move into `grep` and `awk` expressions without
+tests and with GNU and BSD differences.
+
 ## Rejected alternatives
 
 - Adding rules per file type for closing tags, regular expressions and property access:
@@ -95,6 +118,10 @@ authority handling; the refinements below close them without restoring broad che
       and other slash-prefixed tokens pass; tree escapes, unapproved URLs, remote paths
       and e-mail addresses are rejected; header and hunk tests stay.
 - [x] Update the policy description in `CONTRIBUTING.md`.
+- [ ] Compile the policy in the pre-push hook only when its source hash changed.
+- [ ] Mark the policy and hook tests as ignored, drop `ci_status.rs` from the policy test, and
+      run the ignored tests in the hook and in CI only when a change touches the policy, the
+      hook or its tests; document the manual command in `CONTRIBUTING.md`.
 - [ ] Complete validation.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
 
@@ -117,6 +144,9 @@ authority handling; the refinements below close them without restoring broad che
       directory (see `CONTRIBUTING.md` for exact commands)
 - [ ] `cargo test --locked`
 - [ ] `cargo test -p dmd-native --locked`
+- [ ] `cargo test -p dmd-protocol --test policy --locked -- --ignored`
+- [ ] A push whose commits do not touch the policy, the hook or its tests neither compiles the
+      policy nor runs the ignored tests when a matching build is cached.
 - [ ] `cargo build --release --locked`, after the gate passes
 
 ## Post-completion
