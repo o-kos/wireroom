@@ -60,7 +60,8 @@ authority handling; the refinements below close them without restoring broad che
   after two slashes pass. URLs with an empty authority have no host to check and apply
   the private-location rules to their path. This permits harmless system paths in
   triple-slash `file` URLs while rejecting private paths in both single-slash and
-  triple-slash forms.
+  triple-slash forms; in empty-authority URL paths and the single-slash `file` form,
+  drive detection also accepts exactly one leading slash without widening it elsewhere.
 - The closing-tag matching (`strip_markup_closing_tag`) and the anchored `.gitignore`
   exemption are removed, together with the file tracking that only the exemption used.
   `check_added_text` keeps separating headers from hunk text by `diff ` and `@@` lines,

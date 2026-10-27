@@ -77,17 +77,20 @@ fn home_relative_location(token: &str) -> bool {
         .is_some_and(|(_, path)| !path.is_empty())
 }
 
-fn windows_location(token: &str) -> bool {
+fn windows_drive_location(token: &str) -> bool {
     let bytes = token.as_bytes();
-    let drive = bytes.first().is_some_and(u8::is_ascii_alphabetic)
+    bytes.first().is_some_and(u8::is_ascii_alphabetic)
         && bytes.get(1) == Some(&b':')
-        && bytes.get(2).is_some_and(|c| matches!(c, b'/' | b'\\'));
+        && bytes.get(2).is_some_and(|c| matches!(c, b'/' | b'\\'))
+}
+
+fn windows_location(token: &str) -> bool {
     let unc = token
         .strip_prefix("\\\\\\\\")
         .or_else(|| token.strip_prefix("\\\\"))
         .and_then(|rest| rest.split_once(['\\', '/']))
         .is_some_and(|(host, _)| !host.is_empty());
-    drive || unc
+    windows_drive_location(token) || unc
 }
 
 fn authority_host(authority: &str) -> &str {
@@ -121,7 +124,12 @@ fn token_violation(token: &str) -> Option<&'static str> {
             let host = authority_host(authority).to_ascii_lowercase();
             return (!HOSTS.contains(&host.as_str())).then_some("unapproved URL host");
         }
-        return path_violation(address.split(['?', '#']).next().unwrap_or(""));
+        return url_path_violation(address);
+    }
+    if let Some(path) = token.strip_prefix("file:/")
+        && windows_drive_location(path)
+    {
+        return Some("private filesystem location");
     }
     if let Some(host) = scheme_relative_host(token) {
         return (!HOSTS.contains(&host.as_str())).then_some("unapproved URL host");
@@ -140,6 +148,14 @@ fn token_violation(token: &str) -> Option<&'static str> {
         }
     }
     path_violation(token)
+}
+
+fn url_path_violation(path: &str) -> Option<&'static str> {
+    let path = path.split(['?', '#']).next().unwrap_or("");
+    if path.strip_prefix('/').is_some_and(windows_drive_location) {
+        return Some("private filesystem location");
+    }
+    path_violation(path)
 }
 
 fn path_violation(token: &str) -> Option<&'static str> {
@@ -426,6 +442,34 @@ mod tests {
         assert_eq!(violation(&value), None);
         let value = ["file:", "", "", "", &host, "path"].join("/");
         assert_eq!(violation(&value), None);
+    }
+
+    #[test]
+    fn rejects_windows_drive_paths_in_file_urls() {
+        for slash_count in [1, 3] {
+            for drive in ["C", "z"] {
+                for separator in ["/", "\\"] {
+                    let path = [format!("{drive}:"), "capture".into()].join(separator);
+                    let value = format!("file:{}{path}", "/".repeat(slash_count));
+                    assert_eq!(
+                        violation(&value),
+                        Some("private filesystem location"),
+                        "missed {value}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn limits_slash_prefixed_drive_detection_to_url_paths() {
+        let drive = ["C:", "capture"].join("/");
+        for prefix in ["/", "note:/", "relative/", "file:////", "https://github.com/"] {
+            let value = format!("{prefix}{drive}");
+            assert_eq!(violation(&value), None, "rejected {value}");
+        }
+        let value = format!("https:///{drive}");
+        assert_eq!(violation(&value), Some("private filesystem location"));
     }
 
     #[test]
