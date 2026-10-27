@@ -17,8 +17,8 @@ example, `docs/1-project-workflow`). Copy `docs/plans/TEMPLATE.md` to a numbered
 that plan before implementation. This bootstrap's pre-existing branch is the sole
 exception to that ordering.
 
-The implementer works in a dedicated Git worktree checked out on the Issue branch,
-outside the main checkout. The main checkout stays on `main`.
+All work, including the implementer's, happens on the Issue branch in the main
+checkout. Use a separate worktree only when the owner asks for one.
 
 Open a Draft Pull Request early. Include a closing keyword such as `Resolves #1`, a
 link to the plan and the intended behavior. Keep the description aligned with the final
