@@ -126,32 +126,32 @@ tests and with GNU and BSD differences.
 - [x] Mark the policy and hook tests as ignored, drop `ci_status.rs` from the policy test, and
       run the ignored tests in the hook and in CI only when a change touches the policy, the
       hook or its tests; document the manual command in `CONTRIBUTING.md`.
-- [ ] Complete validation.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] A multi-line HTML element whose closing tag stands on its own line passes.
-- [ ] A JavaScript regular-expression literal starting with a slash passes, including
+- [x] A multi-line HTML element whose closing tag stands on its own line passes.
+- [x] A JavaScript regular-expression literal starting with a slash passes, including
       one matching a less-than sign.
-- [ ] Property access ending in a DNS suffix passes; a URL to an unapproved host is still
+- [x] Property access ending in a DNS suffix passes; a URL to an unapproved host is still
       rejected.
-- [ ] An anchored `.gitignore` pattern passes without a special case.
-- [ ] Home-directory, mount, drive and network paths, tree escapes and e-mail addresses
+- [x] An anchored `.gitignore` pattern passes without a special case.
+- [x] Home-directory, mount, drive and network paths, tree escapes and e-mail addresses
       are still rejected.
-- [ ] The single-file version of the window concept from #9, without its external font
+- [x] The single-file version of the window concept from #9, without its external font
       link, passes as an HTML file (checked by the orchestrator).
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
       (warnings are denied in `[workspace.lints]`)
-- [ ] `cargo clippy -p dmd --features native --all-targets --locked` with an empty core
+- [x] `cargo clippy -p dmd --features native --all-targets --locked` with an empty core
       directory (see `CONTRIBUTING.md` for exact commands)
-- [ ] `cargo test --locked`
-- [ ] `cargo test -p dmd-native --locked`
-- [ ] `cargo test -p dmd-protocol --test policy --locked -- --ignored`
-- [ ] A push whose commits do not touch the policy, the hook or its tests neither compiles the
+- [x] `cargo test --locked`
+- [x] `cargo test -p dmd-native --locked`
+- [x] `cargo test -p dmd-protocol --test policy --locked -- --ignored`
+- [x] A push whose commits do not touch the policy, the hook or its tests neither compiles the
       policy nor runs the ignored tests when a matching build is cached.
-- [ ] `cargo build --release --locked`, after the gate passes
+- [x] `cargo build --release --locked`, after the gate passes
 
 ## Post-completion
 

@@ -302,7 +302,9 @@ do not negotiate with each other; the orchestrator decides which findings to acc
 or decline. Fix accepted findings in focused commits and rerun affected checks. Route
 out-of-scope findings to separate Issues.
 
-Repeat with the same reviewer until a round returns nothing substantive. Each later
+Repeat with the same reviewer until a round returns nothing substantive, for at most three
+rounds. If substantive findings remain after the third round, stop and give the owner a
+summary of them with a recommendation; the owner decides how to proceed. Each later
 prompt names what was fixed and what was declined, explains each decision, and asks
 the reviewer to challenge the reasoning behind every decline. A reviewer that never
 disagrees is worth nothing.
