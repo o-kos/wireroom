@@ -94,25 +94,35 @@ the existing session-handoff guidance in `AGENTS.md` in this branch.
 
 ## Implementation steps
 
-- [ ] Write the public specification, including lifecycle tables and field types.
-- [ ] Add a complete exchange with pause, speed change, retune and normal end.
-- [ ] Link the specification from the repository introduction.
-- [ ] Check the specification against owner decisions and Issue criteria, recording
+- [x] Write the public specification, including lifecycle tables and field types.
+- [x] Add a complete exchange with pause, speed change, retune and normal end.
+- [x] Link the specification from the repository introduction.
+- [x] Check the specification against owner decisions and Issue criteria, recording
       the owner-approved schema deferrals explicitly.
-- [ ] Complete validation and mechanical review.
-- [ ] Move this plan to `docs/plans/completed/` before final review.
+- [x] Complete validation and mechanical review.
+- [x] Move this plan to `docs/plans/completed/` before final review.
 
 ## Validation
 
-- [ ] Verify each Issue acceptance criterion against the owner-approved scope.
-- [ ] Check every example JSON line and its ordering against the document.
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo clippy -p dmd --features native --all-targets --locked` with an empty core
+- [x] Verify each Issue acceptance criterion against the owner-approved scope.
+- [x] Check every example JSON line and its ordering against the document.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo clippy -p dmd --features native --all-targets --locked` with an empty core
       directory (see `CONTRIBUTING.md` for exact commands)
-- [ ] `cargo test --locked`
-- [ ] `cargo test -p dmd-native --locked`
-- [ ] `cargo build --release --locked`, after the gate passes
+- [x] `cargo test --locked`
+- [x] `cargo test -p dmd-native --locked`
+- [x] `cargo build --release --locked`, after the gate passes
+
+## Review
+
+Mechanical round 1 found one notation ambiguity: the JSON array spelling could be
+mistaken for a closed mathematical interval. Accepted and clarified the distinction
+between the wire array `[start, end]` and interval `[start, end)`. No findings were
+declined. Round 2 was clean in lifecycle, public contract, example coverage and scope.
+Source proofreading also retained the known string type of producer `log` values.
+
+Intent and owner review are pending.
 
 ## Post-completion
 
@@ -124,4 +134,4 @@ the existing session-handoff guidance in `AGENTS.md` in this branch.
 - For this implementation only, later native work needs binary retrieval by ID,
   live tuning and atomic live parameter updates. These are implementation needs,
   not requirements on another supplier's internal interface.
-- Mechanical review and owner review remain required before marking Ready or merging.
+- Intent and owner review remain required before marking Ready or merging.
