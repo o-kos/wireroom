@@ -253,25 +253,22 @@ environment reads, probing or linking.
 
 ### Roles and invocation settings
 
-Use these fixed roles. Pass the model and reasoning effort explicitly on every
-invocation; never rely on machine-local defaults. Apply the listed access mode too.
+Claude is unavailable; use Codex only. These fixed assignments replace previous
+roles, including for unfinished work. Pass the model and reasoning effort explicitly
+on every invocation; never rely on machine-local defaults. Apply the listed access
+mode too.
 
 | Role | Performed by | Model | Reasoning effort and access |
 | --- | --- | --- | --- |
-| Planning and intent review | Claude | Opus | high |
-| Dispatch, Git and Pull Request routine | Claude | Sonnet | medium |
-| Reconnaissance | Codex | `gpt-6-astra` | medium, read-only |
-| Implementation | Codex | `gpt-6-astra` | high, workspace-write |
-| Mechanical code review | Codex | `gpt-5.6-sol` | high, read-only |
+| Planning | Codex | `gpt-6.1-sol` | medium |
+| Dispatch, Git and Pull Request routine | Codex | `gpt-6.1-sol` | medium |
+| Reconnaissance | Codex | `gpt-6.1-sol` | medium, read-only |
+| Implementation | Codex | `gpt-6.1-sol` | medium, workspace-write |
+| Mechanical code review | Codex | `gpt-6.1-sol` | high, read-only |
+| Intent review | Codex | `gpt-6.1-sol` | high, read-only |
 
-Select the mechanical reviewer from the implementer, using the following table. This
-selection overrides the usual mechanical-review role when Claude implements the
-change, and stays fixed across all rounds of the same review.
-
-| Implementer | Reviewer | CLI model | Effort |
-| --- | --- | --- | --- |
-| Codex GPT-6 Astra | Codex GPT-5.6 Sol | `gpt-5.6-sol` | high |
-| Claude | Codex GPT-6 Astra | `gpt-6-astra` | high |
+Use `gpt-6.1-sol` at high for every review, regardless of who implemented the change.
+Keep these reviewer settings fixed across subsequent rounds.
 
 ### First tier: mechanical code review
 
@@ -285,10 +282,10 @@ handling, tests and scope. Exclude checks already covered by the automated gate.
 Require an explicit "nothing found" for each category without a substantive finding;
 do not ask for a quota of findings or accept invented findings to fill a category.
 
-Set `review_model` from the reviewer-selection table and invoke the reviewer read-only:
+Invoke the reviewer read-only with the fixed model and effort:
 
 ```sh
-codex exec -s read-only --model "${review_model:?set from the table}" \
+codex exec -s read-only --model gpt-6.1-sol \
   -c 'model_reasoning_effort="high"' \
   -C "$(git rev-parse --show-toplevel)" "$(cat review-prompt.md)" < /dev/null
 ```
@@ -311,8 +308,9 @@ disagrees is worth nothing.
 
 ### Second tier: intent review
 
-After the mechanical review is clean, the orchestrator (Claude Opus, explicitly at
-high reasoning effort) reviews the final diff once against the approved plan, owner
+After the mechanical review is clean, the orchestrator uses Codex `gpt-6.1-sol`,
+explicitly at high reasoning effort and read-only, to review the final diff once
+against the approved plan, owner
 decisions and every invariant. This tier asks whether the result is what was requested
 and preserves every invariant; code correctness was covered by the first tier.
 Return any findings as one structured list to the implementer under the same

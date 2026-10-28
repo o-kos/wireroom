@@ -10,7 +10,8 @@ failure handling and a complete exchange in `docs/protocol.md`.
 
 This is a documentation-only change. Rust types, command implementation, the replay
 recording format, result-directory layout and C ABI changes are outside scope. Keep
-the existing session-handoff guidance in `AGENTS.md` in this branch.
+the existing session-handoff guidance in `AGENTS.md` in this branch. Include the
+owner-requested workflow role revision in `AGENTS.md` and `CONTRIBUTING.md`.
 
 ## Context
 
@@ -122,7 +123,13 @@ between the wire array `[start, end]` and interval `[start, end)`. No findings w
 declined. Round 2 was clean in lifecycle, public contract, example coverage and scope.
 Source proofreading also retained the known string type of producer `log` values.
 
-Intent and owner review are pending.
+After the owner's workflow role revision, mechanical review of the combined scope
+and intent review were both clean, with no substantive findings. Intent review
+checked the local final files and supplied owner decisions. GitHub metadata was
+unavailable during that read-only review; the current Pull Request metadata was
+checked independently.
+
+Owner review is pending.
 
 ## Post-completion
 
@@ -134,4 +141,4 @@ Intent and owner review are pending.
 - For this implementation only, later native work needs binary retrieval by ID,
   live tuning and atomic live parameter updates. These are implementation needs,
   not requirements on another supplier's internal interface.
-- Intent and owner review remain required before marking Ready or merging.
+- Owner review remains required before marking Ready or merging.
