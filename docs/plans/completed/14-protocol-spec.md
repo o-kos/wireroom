@@ -129,7 +129,7 @@ checked the local final files and supplied owner decisions. GitHub metadata was
 unavailable during that read-only review; the current Pull Request metadata was
 checked independently.
 
-Owner review is pending.
+The owner approved the final change on 2026-10-28.
 
 ## Post-completion
 
@@ -141,4 +141,5 @@ Owner review is pending.
 - For this implementation only, later native work needs binary retrieval by ID,
   live tuning and atomic live parameter updates. These are implementation needs,
   not requirements on another supplier's internal interface.
-- Owner review remains required before marking Ready or merging.
+- Owner approval is complete. Merge still requires a successful `ci/full` check on
+  a branch up to date with `main`.
