@@ -54,7 +54,7 @@ UI, signal decoding/hashing and output materialization remain outside scope.
 - [x] Implement metadata, settings matching and incremental journal validation.
 - [x] Complete public documentation, conformance fixtures and criterion coverage.
 - [x] Complete the local validation gate and release build.
-- [ ] Complete mechanical review and resolve substantive findings.
+- [x] Complete mechanical review and resolve substantive findings.
 - [ ] Complete intent review against all criteria and invariants.
 - [ ] Move this plan to `docs/plans/completed/` before final owner review.
 
@@ -152,6 +152,16 @@ still falls back to the real index. The previous opaque-comment regressions rema
 covered. The 42 Rust tests, documentation example, full local gate and release
 rebuild pass after correction. The third, final mechanical round remains pending.
 Round 2 is not recorded as clean.
+
+### Mechanical round 3
+
+The final mechanical round was clean in all five categories: malformed-data and
+resource boundaries, architecture/invariants, inspectable errors/API, substantive
+test gaps, and scope/documentation/maintainability. All five earlier findings were
+accepted and corrected; none were declined. The aggregate work-budget correction
+and earlier ZIP64, opaque-comment and ordered-range fixes remain effective.
+The final diff includes the README status update and the documented implementation
+budget. Intent review and final owner approval remain pending.
 
 ## Post-completion
 
