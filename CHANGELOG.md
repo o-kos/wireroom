@@ -4,6 +4,11 @@ All notable user-visible changes are documented here, following Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- Shared run protocol 1.0 command/event types, exact producer JSON preservation,
+  individual-message validation and bounded streaming NDJSON codecs.
+
 ### Changed
 
 - The product is named Wireroom, its interface binary will be `wr`, and the `dmd`

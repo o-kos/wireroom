@@ -131,6 +131,7 @@ name = "dmd-protocol"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]
