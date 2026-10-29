@@ -126,18 +126,7 @@ fn member(handle: &Handle, entry: &Entry, central: u64) -> Result<Asset, Error> 
         .lock()
         .map_err(|_| Error::Archive("archive handle poisoned"))?;
     let (start, end) = local(&mut *shared.source, entry, central)?;
-    let range = (entry.offset, end);
-    for (&old_start, (old_end, name)) in &shared.consumed {
-        if name == &entry.name {
-            continue;
-        }
-        if range.0 < *old_end && old_start < range.1 {
-            return Err(Error::Archive("overlapping consumed entries"));
-        }
-    }
-    shared
-        .consumed
-        .insert(range.0, (range.1, entry.name.clone()));
+    register_range(&mut shared.consumed, entry.offset, end, &entry.name)?;
     Ok(Asset {
         range: Range {
             handle: handle.clone(),
@@ -156,6 +145,32 @@ fn member(handle: &Handle, entry: &Entry, central: u64) -> Result<Asset, Error> 
         ended: false,
         failed: false,
     })
+}
+fn register_range(
+    ranges: &mut BTreeMap<u64, (u64, String)>,
+    start: u64,
+    end: u64,
+    name: &str,
+) -> Result<(), Error> {
+    if let Some((prior_end, prior_name)) = ranges.get(&start) {
+        if *prior_end == end && prior_name == name {
+            return Ok(());
+        }
+        return Err(Error::Archive("overlapping consumed entries"));
+    }
+    if ranges
+        .range(..start)
+        .next_back()
+        .is_some_and(|(_, (prior_end, _))| *prior_end > start)
+        || ranges
+            .range(start..)
+            .next()
+            .is_some_and(|(next, _)| *next < end)
+    {
+        return Err(Error::Archive("overlapping consumed entries"));
+    }
+    ranges.insert(start, (end, name.to_string()));
+    Ok(())
 }
 fn local(r: &mut dyn Source, entry: &Entry, central: u64) -> Result<(u64, u64), Error> {
     let h = index::bytes(r, entry.offset, 30)?;
@@ -183,7 +198,8 @@ fn local(r: &mut dyn Source, entry: &Entry, central: u64) -> Result<(u64, u64), 
     let fields = index::extras(&variable[names..])?;
     local_sizes(&h, &fields, entry)?;
     if entry.flags & 8 != 0 {
-        end = descriptor_end(r, end, entry, central)?;
+        let wide = entry.zip64_sizes || fields.contains_key(&1);
+        end = descriptor_end(r, end, entry, central, wide)?;
     }
     Ok((start, end))
 }
@@ -217,8 +233,13 @@ fn local_sizes(h: &[u8], fields: &BTreeMap<u16, &[u8]>, entry: &Entry) -> Result
     }
     Ok(())
 }
-fn descriptor_end(r: &mut dyn Source, at: u64, entry: &Entry, central: u64) -> Result<u64, Error> {
-    // Both descriptor widths occur with ZIP64 local headers, even for small members.
+fn descriptor_end(
+    r: &mut dyn Source,
+    at: u64,
+    entry: &Entry,
+    central: u64,
+    wide: bool,
+) -> Result<u64, Error> {
     let available = (central - at).min(24) as usize;
     let b = index::bytes(r, at, available)?;
     let prefixes = if b.len() >= 4 && index::u32_at(&b, 0) == 0x08074b50 {
@@ -226,20 +247,18 @@ fn descriptor_end(r: &mut dyn Source, at: u64, entry: &Entry, central: u64) -> R
     } else {
         vec![0]
     };
+    let width = if wide { 8 } else { 4 };
     for prefix in prefixes {
-        for wide in [false, true] {
-            let width = if wide { 8 } else { 4 };
-            let length = prefix + 4 + 2 * width;
-            if b.len() < length || index::u32_at(&b, prefix) != entry.crc {
-                continue;
-            }
-            let sizes = &b[prefix + 4..length];
-            let mut p = 0;
-            let compressed = index::extended(0, 0, sizes, &mut p, width)?;
-            let size = index::extended(0, 0, sizes, &mut p, width)?;
-            if compressed == entry.compressed && size == entry.size {
-                return Ok(at + length as u64);
-            }
+        let length = prefix + 4 + 2 * width;
+        if b.len() < length || index::u32_at(&b, prefix) != entry.crc {
+            continue;
+        }
+        let sizes = &b[prefix + 4..length];
+        let mut p = 0;
+        let compressed = index::extended(0, 0, sizes, &mut p, width)?;
+        let size = index::extended(0, 0, sizes, &mut p, width)?;
+        if compressed == entry.compressed && size == entry.size {
+            return Ok(at + length as u64);
         }
     }
     Err(Error::Archive("data descriptor mismatch"))
@@ -372,5 +391,29 @@ impl Asset {
                 return Err(Error::Integrity("truncated Deflate"));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ordered_ranges_check_both_neighbors_and_exact_reopens() {
+        let mut ranges = BTreeMap::new();
+        for (start, end, name) in [(100, 110, "one"), (300, 310, "three"), (200, 210, "two")] {
+            register_range(&mut ranges, start, end, name).unwrap();
+        }
+        register_range(&mut ranges, 200, 210, "two").unwrap();
+        assert_eq!(ranges.len(), 3);
+        for (start, end, name) in [
+            (105, 115, "predecessor"),
+            (190, 205, "successor"),
+            (110, 301, "spanning"),
+            (200, 210, "different"),
+            (200, 211, "two"),
+        ] {
+            assert!(register_range(&mut ranges, start, end, name).is_err());
+        }
+        register_range(&mut ranges, 110, 200, "adjacent").unwrap();
     }
 }

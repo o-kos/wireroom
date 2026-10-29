@@ -490,3 +490,90 @@ fn invalid_descriptors_and_zip64_locator_are_rejected() {
     zip.u32(locator + 16, 2);
     assert!(Fixture::new(&zip.bytes).open().is_err());
 }
+
+#[test]
+fn zip64_empty_descriptor_cannot_hide_a_corrupt_wide_size() {
+    for signed in [false, true] {
+        let mut member = Member::stored("payloads/a", b"");
+        member.zip64 = true;
+        member.descriptor_signature = Some(signed);
+        member.flags |= 8;
+        let descriptor_start = member.header().len();
+        let mut zip = Zip::standard(vec![member]);
+        let decoded_offset = zip.local[2] + descriptor_start + if signed { 16 } else { 12 };
+        zip.u32(decoded_offset, 1);
+        asset_fails(&zip, "a", 0);
+    }
+}
+
+#[test]
+fn comment_with_a_complete_but_invalid_end_candidate_is_opaque() {
+    let mut zip = Zip::standard(Vec::new());
+    let comment_at = zip.bytes.len();
+    zip.u16(comment_at - 2, 22);
+    let mut comment = vec![0; 22];
+    comment[..4].copy_from_slice(&0x06054b50_u32.to_le_bytes());
+    comment[4..6].copy_from_slice(&1_u16.to_le_bytes());
+    zip.bytes.extend(comment);
+    assert!(Fixture::new(&zip.bytes).open().is_ok());
+}
+
+#[test]
+fn zip64_does_not_override_conflicting_nonsentinel_legacy_counts() {
+    let mut zip = Zip::standard(Vec::new());
+    zip.zip64_footer();
+    let end = zip.bytes.len() - 22;
+    zip.u16(end + 8, 3);
+    zip.u16(end + 10, 3);
+    assert!(Fixture::new(&zip.bytes).open().is_err());
+}
+
+#[test]
+fn legacy_zip64_size_and_offset_must_agree() {
+    for field in [12, 16] {
+        let mut zip = Zip::standard(Vec::new());
+        zip.zip64_footer();
+        let end = zip.bytes.len() - 22;
+        zip.u32(end + field, 1);
+        assert!(Fixture::new(&zip.bytes).open().is_err());
+    }
+}
+#[test]
+fn empty_descriptor_assets_use_the_declared_zip_width() {
+    for zip64 in [false, true] {
+        for signed in [false, true] {
+            for deflated in [false, true] {
+                let mut member = if deflated {
+                    Member::deflated("payloads/a", b"")
+                } else {
+                    Member::stored("payloads/a", b"")
+                };
+                member.zip64 = zip64;
+                member.descriptor_signature = Some(signed);
+                member.flags |= 8;
+                let offset =
+                    member.header().len() + member.compressed.len() + if signed { 16 } else { 12 };
+                let mut zip = Zip::standard(vec![member]);
+                let fixture = Fixture::new(&zip.bytes);
+                let recording = fixture.open().unwrap();
+                let mut asset = recording.asset(&descriptor("a", 0)).unwrap();
+                assert_eq!(asset.read_chunk(&mut [0; 1]).unwrap(), 0);
+                assert!(asset.verified());
+                if zip64 {
+                    zip.u32(zip.local[2] + offset, 1);
+                    asset_fails(&zip, "a", 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn zip64_footer_accepts_consistent_nonsentinel_legacy_fields() {
+    let mut zip = Zip::standard(Vec::new());
+    let legacy = zip.bytes[zip.bytes.len() - 22..].to_vec();
+    zip.zip64_footer();
+    let end = zip.bytes.len() - 22;
+    zip.bytes[end + 8..end + 20].copy_from_slice(&legacy[8..20]);
+    assert!(Fixture::new(&zip.bytes).open().is_ok());
+}

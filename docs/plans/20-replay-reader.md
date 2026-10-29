@@ -91,7 +91,7 @@ only its last 22 locator bytes before reading the central directory.
 ## Validation results
 
 The full local gate and release build passed on the implementation. The new crate
-has 31 Rust tests and one compile-checked documentation example; its runnable
+has 38 Rust tests and one compile-checked documentation example; its runnable
 `inspect` example builds with the normal all-targets checks. Existing protocol,
 CLI, dependency-policy and core-independent native tests pass. The eight existing
 hook/content-policy tests remain intentionally ignored because their source was
@@ -99,8 +99,33 @@ not changed. No lint suppression, threshold change or hook bypass was added.
 
 ## Review
 
-Record accepted and declined findings, their reasons, corrections and final-round
-status. No implementation review has run yet.
+### Mechanical round 1
+
+All four substantive findings were accepted; none were declined.
+
+- ZIP64 descriptor width ambiguity could certify a damaged decoded-size word on an
+  empty asset. Descriptor width now follows ZIP64 extra-field presence in the local
+  or central header, without trying a short-width fallback. Signed/unsigned empty
+  stored and Deflate fixtures cover valid and damaged descriptors.
+- An EOCD-shaped value inside an opaque archive comment could shadow the real end
+  record. Candidates now require valid footer/index structure; a failed candidate
+  continues the bounded tail search. The normal comment-free case retains its
+  last-22-byte fast path and does not scan journal or payload contents.
+- ZIP64 footer values could overwrite conflicting nonsentinel legacy counts, sizes
+  or offsets. Each nonsentinel field must now agree; consistent nonsentinel legacy
+  fields remain supported when a ZIP64 locator is present.
+- Consumed-range validation scanned all earlier entries for every asset. Ordered
+  predecessor/successor checks now bound each lookup logarithmically while exact
+  reopened ranges retain the same entry identity. Neighbor, spanning-overlap,
+  adjacent-range and changed-identity fixtures cover the replacement.
+
+The damaged empty descriptor, opaque-comment EOCD and conflicting legacy count
+regressions failed before correction and pass afterward. Added size/offset,
+consistent-legacy, empty-Deflate and ordered-range regressions also pass. Focused
+validation passes 38 Rust tests and the documentation example, formatting and
+crate all-targets Clippy. The full local gate and release rebuild also passed
+after the corrections. The next mechanical round remains pending; round 1 is
+not recorded as clean.
 
 ## Post-completion
 

@@ -13,6 +13,7 @@ pub(crate) struct Entry {
     pub compressed: u64,
     pub size: u64,
     pub offset: u64,
+    pub zip64_sizes: bool,
 }
 pub(crate) struct Index {
     pub entries: BTreeMap<String, Entry>,
@@ -66,80 +67,121 @@ pub(crate) fn extras(b: &[u8]) -> Result<BTreeMap<u16, &[u8]>, Error> {
     }
     Ok(fields)
 }
-fn directory_tail<R: Read + Seek + ?Sized>(r: &mut R, length: u64) -> Result<Vec<u8>, Error> {
+pub(crate) fn scan<R: Read + Seek + ?Sized>(r: &mut R) -> Result<Index, Error> {
+    let length = r.seek(SeekFrom::End(0))?;
+    profile::limit(length, profile::ARCHIVE, "archive bytes")?;
     if length < 22 {
         return Err(Error::Archive("end directory"));
     }
     let fixed = bytes(r, length - 22, 22)?;
-    if u32_at(&fixed, 0) == 0x06054b50 && u16_at(&fixed, 20) == 0 {
-        return Ok(fixed);
+    if u32_at(&fixed, 0) == 0x06054b50
+        && u16_at(&fixed, 20) == 0
+        && let Ok(index) =
+            directory_layout(r, &fixed, length - 22).and_then(|layout| read_directory(r, layout))
+    {
+        return Ok(index);
     }
     let tail_len = length.min(65557) as usize;
-    bytes(r, length - tail_len as u64, tail_len)
+    let tail = bytes(r, length - tail_len as u64, tail_len)?;
+    let mut failure = Error::Archive("end directory");
+    for end in (0..tail.len() - 21).rev() {
+        if u32_at(&tail, end) != 0x06054b50
+            || end + 22 + usize::from(u16_at(&tail, end + 20)) != tail.len()
+        {
+            continue;
+        }
+        match directory_layout(r, &tail[end..], length - tail_len as u64 + end as u64)
+            .and_then(|layout| read_directory(r, layout))
+        {
+            Ok(index) => return Ok(index),
+            Err(error) => failure = error,
+        }
+    }
+    Err(failure)
 }
-pub(crate) fn scan<R: Read + Seek + ?Sized>(r: &mut R) -> Result<Index, Error> {
-    let length = r.seek(SeekFrom::End(0))?;
-    profile::limit(length, profile::ARCHIVE, "archive bytes")?;
-    let tail = directory_tail(r, length)?;
-    let tail_len = tail.len();
-    let end = (0..tail.len().saturating_sub(21))
-        .rev()
-        .find(|&i| {
-            tail[i..].starts_with(&[0x50, 0x4b, 5, 6])
-                && i + 22 + usize::from(u16_at(&tail, i + 20)) == tail.len()
-        })
-        .ok_or(Error::Archive("end directory"))?;
-    let e = &tail[end..];
+struct Directory {
+    count: u64,
+    size: u64,
+    offset: u64,
+}
+fn read_directory<R: Read + Seek + ?Sized>(r: &mut R, layout: Directory) -> Result<Index, Error> {
+    let data = bytes(r, layout.offset, layout.size as usize)?;
+    parse_directory(&data, layout.count, layout.offset)
+}
+fn directory_layout<R: Read + Seek + ?Sized>(
+    r: &mut R,
+    e: &[u8],
+    end_at: u64,
+) -> Result<Directory, Error> {
     if u16_at(e, 4) != 0 || u16_at(e, 6) != 0 || u16_at(e, 8) != u16_at(e, 10) {
         return Err(Error::Archive("multiple disks"));
     }
     let mut count = u64::from(u16_at(e, 10));
     let mut size = u64::from(u32_at(e, 12));
     let mut offset = u64::from(u32_at(e, 16));
-    let end_at = length - tail_len as u64 + end as u64;
-    let directory_end =
-        if count == 65535 || size == u64::from(u32::MAX) || offset == u64::from(u32::MAX) {
-            let locator = bytes(
-                r,
-                end_at
-                    .checked_sub(20)
-                    .ok_or(Error::Archive("ZIP64 locator"))?,
-                20,
-            )?;
-            if u32_at(&locator, 0) != 0x07064b50
-                || u32_at(&locator, 4) != 0
-                || u32_at(&locator, 16) != 1
-            {
-                return Err(Error::Archive("ZIP64 locator"));
-            }
-            let pos = u64_at(&locator, 8);
-            let z = bytes(r, pos, 56)?;
-            if u32_at(&z, 0) != 0x06064b50
-                || u64_at(&z, 4) < 44
-                || pos
-                    .checked_add(12)
-                    .and_then(|p| p.checked_add(u64_at(&z, 4)))
-                    != end_at.checked_sub(20)
-                || u32_at(&z, 16) != 0
-                || u32_at(&z, 20) != 0
-                || u64_at(&z, 24) != u64_at(&z, 32)
-            {
-                return Err(Error::Archive("ZIP64 end"));
-            }
-            count = u64_at(&z, 32);
-            size = u64_at(&z, 40);
-            offset = u64_at(&z, 48);
-            pos
-        } else {
+    let locator_present = if offset.checked_add(size) != Some(end_at) && end_at >= 20 {
+        u32_at(&bytes(r, end_at - 20, 20)?, 0) == 0x07064b50
+    } else {
+        false
+    };
+    let directory_end = if count == 65535
+        || size == u64::from(u32::MAX)
+        || offset == u64::from(u32::MAX)
+        || locator_present
+    {
+        let locator = bytes(
+            r,
             end_at
-        };
+                .checked_sub(20)
+                .ok_or(Error::Archive("ZIP64 locator"))?,
+            20,
+        )?;
+        if u32_at(&locator, 0) != 0x07064b50
+            || u32_at(&locator, 4) != 0
+            || u32_at(&locator, 16) != 1
+        {
+            return Err(Error::Archive("ZIP64 locator"));
+        }
+        let pos = u64_at(&locator, 8);
+        let z = bytes(r, pos, 56)?;
+        if u32_at(&z, 0) != 0x06064b50
+            || u64_at(&z, 4) < 44
+            || pos
+                .checked_add(12)
+                .and_then(|p| p.checked_add(u64_at(&z, 4)))
+                != end_at.checked_sub(20)
+            || u32_at(&z, 16) != 0
+            || u32_at(&z, 20) != 0
+            || u64_at(&z, 24) != u64_at(&z, 32)
+        {
+            return Err(Error::Archive("ZIP64 end"));
+        }
+        consistent(count, 65535, u64_at(&z, 32))?;
+        consistent(size, u64::from(u32::MAX), u64_at(&z, 40))?;
+        consistent(offset, u64::from(u32::MAX), u64_at(&z, 48))?;
+        count = u64_at(&z, 32);
+        size = u64_at(&z, 40);
+        offset = u64_at(&z, 48);
+        pos
+    } else {
+        end_at
+    };
     profile::limit(count, 65536, "entry count")?;
     profile::limit(size, profile::DIRECTORY, "central directory")?;
     if offset.checked_add(size) != Some(directory_end) {
         return Err(Error::Archive("central range"));
     }
-    let data = bytes(r, offset, size as usize)?;
-    parse_directory(&data, count, offset)
+    Ok(Directory {
+        count,
+        size,
+        offset,
+    })
+}
+fn consistent(legacy: u64, sentinel: u64, wide: u64) -> Result<(), Error> {
+    if legacy != sentinel && legacy != wide {
+        return Err(Error::Archive("ZIP64 legacy mismatch"));
+    }
+    Ok(())
 }
 fn parse_directory(data: &[u8], count: u64, central: u64) -> Result<Index, Error> {
     let mut entries = BTreeMap::new();
@@ -224,6 +266,7 @@ fn parse_entry(h: &[u8], name: String, extra: &[u8]) -> Result<Entry, Error> {
         compressed,
         size,
         offset,
+        zip64_sizes: fields.contains_key(&1),
     })
 }
 pub(crate) fn extended(
