@@ -55,7 +55,8 @@ runtime/lifecycle execution, CLI/UI and filesystem operations remain outside sco
 - [x] Add conformance/error tests and public API documentation; map all 11 Issue
       criteria to tests or documented caller obligations.
 - [x] Complete the local validation gate and release build.
-- [ ] Complete mechanical review and intent review.
+- [x] Complete mechanical review.
+- [ ] Complete intent review.
 - [ ] Move this plan to `docs/plans/completed/` before final owner review.
 
 ## Validation
@@ -69,7 +70,7 @@ runtime/lifecycle execution, CLI/UI and filesystem operations remain outside sco
 - [x] `cargo build --release --locked`, after the gate passes.
 
 Validation completed successfully: protocol-only tests, the full local gate and
-release build all passed. The suite adds 23 conformance/error tests plus an
+release build all passed. The suite adds 24 conformance/error tests plus an
 executable API example; existing native-isolation and dependency-policy tests also
 pass. The eight existing hook/content-policy tests remain intentionally ignored
 because those files were not changed. No lint suppression or threshold changed.
@@ -91,7 +92,30 @@ Tests are in `crates/protocol/tests/`; the API guide is
 | 8: Incremental framing and duplicate detection | `transport::arbitrary_fragment_boundaries_utf8_crlf_and_multiple_messages`, `complete_line_rejections_recover_but_incomplete_eof_does_not_execute`; `producer::duplicate_keys_at_every_depth_including_ignored_fields`. |
 | 9: Byte limits, short I/O and flushing | `transport::input_exact_limit_lf_crlf_fragmentation_and_early_oversize`, `output_exact_limit_including_escapes_and_phase_points`, `exact_output_boundary_counts_coexisting_points`, `short_writes_flush_per_message_and_exact_wire`, I/O failure tests. |
 | 10: Structured errors, local validation, exact values | `transport::invalid_locally_constructed_messages_write_nothing`, `io_failures_are_structured_and_fatal`, `write_failure_after_prefix_and_flush_failure_after_full_line`; `producer::explicit_json_budget_grammar_and_arbitrary_numbers`; API guide failure mapping. |
-| 11: Examples, independent wire expectations and gate | All 16 command and 46 event example lines are decoded; replay metadata/service records are excluded. Exact wire assertions, executable documentation and validation commands below cover the implementation boundary. Reviews remain pending. |
+| 11: Examples, independent wire expectations and gate | All 16 command and 46 event example lines are decoded; replay metadata/service records are excluded. Exact wire assertions, executable documentation and validation commands above cover the implementation boundary. Intent review remains pending. |
+
+## Review
+
+Mechanical round 1 was not clean: one P2 finding in expensive failure boundaries
+was accepted; none were declined. At EOF, a provisional CR without a following LF
+counts as content, so `MAX_LINE_BYTES + 1` pending bytes must return `TooLong`
+instead of `Incomplete`.
+
+The EOF branch now checks the full pending length before classifying incomplete
+input. The incorrect max-content-plus-CR assertion was replaced with regression
+coverage for exactly-limit content at EOF (`Incomplete`), max content plus CR at
+EOF (`TooLong`) and max content plus CRLF (valid), across fragmented and contiguous
+buffer boundaries. Fatal-reader assertions and the existing early oversize refusal
+checks preserve termination without draining oversized lines.
+
+The new regression failed before the fix and passed afterward. All 10 transport
+tests and the full local gate passed after the fix: formatting, default and native
+Clippy, default tests and core-independent native tests. The eight existing
+hook/content-policy tests remain intentionally ignored. No lint suppression or
+threshold changed.
+
+Mechanical round 2 was clean in every category and verified the EOF correction.
+No findings were declined. Intent review and completed-plan movement remain pending.
 
 ## Post-completion
 

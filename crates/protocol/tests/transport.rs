@@ -165,11 +165,35 @@ fn input_exact_limit_lf_crlf_fragmentation_and_early_oversize() {
     let mut reader = Reader::new(Cursor::new(bytes));
     assert!(matches!(reader.read_command(), Err(DecodeError::TooLong)));
     assert_eq!(reader.into_inner().position(), (MAX_LINE_BYTES + 1) as u64);
-    let mut reader = Reader::new(Cursor::new(padded_line(MAX_LINE_BYTES, b"\r")));
-    assert!(matches!(
-        reader.read_command(),
-        Err(DecodeError::Incomplete)
-    ));
+}
+
+#[test]
+fn input_exact_limit_eof_counts_provisional_cr_as_content() {
+    for capacity in [8192, MAX_LINE_BYTES, MAX_LINE_BYTES + 1, MAX_LINE_BYTES + 2] {
+        let mut reader = Reader::new(BufReader::with_capacity(
+            capacity,
+            Cursor::new(padded_line(MAX_LINE_BYTES, b"")),
+        ));
+        assert!(matches!(
+            reader.read_command(),
+            Err(DecodeError::Incomplete)
+        ));
+        assert!(matches!(reader.read_command(), Err(DecodeError::Ended)));
+
+        let mut reader = Reader::new(BufReader::with_capacity(
+            capacity,
+            Cursor::new(padded_line(MAX_LINE_BYTES, b"\r")),
+        ));
+        assert!(matches!(reader.read_command(), Err(DecodeError::TooLong)));
+        assert!(matches!(reader.read_command(), Err(DecodeError::Ended)));
+
+        let mut reader = Reader::new(BufReader::with_capacity(
+            capacity,
+            Cursor::new(padded_line(MAX_LINE_BYTES, b"\r\n")),
+        ));
+        assert_eq!(reader.read_command().unwrap(), Some(Command::Pause));
+        assert_eq!(reader.read_command().unwrap(), None);
+    }
 }
 
 #[test]

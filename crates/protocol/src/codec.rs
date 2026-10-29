@@ -90,6 +90,9 @@ impl<R: BufRead> Reader<R> {
                 result => result.map_err(DecodeError::Io)?,
             };
             if bytes.is_empty() {
+                if self.pending.len() > MAX_LINE_BYTES {
+                    return Err(DecodeError::TooLong);
+                }
                 return if self.pending.is_empty() {
                     Ok(None)
                 } else {
