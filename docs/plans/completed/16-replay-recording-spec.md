@@ -107,41 +107,66 @@ directory layout are outside scope. No implementation starts with this plan.
 
 ## Implementation steps
 
-- [ ] Write `docs/replay.md`: scope, version identification/compatibility, companion
+- [x] Write `docs/replay.md`: scope, version identification/compatibility, companion
       lookup, ZIP entry layout, metadata fields, preserved module info, NDJSON
       framing, finalization marker and binary asset references.
-- [ ] Define the stored/generated event mapping and playback state/command table,
+- [x] Define the stored/generated event mapping and playback state/command table,
       including initial settings, no-op controls, pacing, pause, stop, EOF, normal
       finalization, an empty source and repeated source-frame frontiers.
-- [ ] Define lazy validation, background digest verification, ZIP/path/resource
+- [x] Define lazy validation, background digest verification, ZIP/path/resource
       limits, payload materialization and setup/runtime failure tables. Keep file
       access safe without requiring eager extraction or whole-recording validation.
-- [ ] Add a complete illustrative archive and playback exchange plus valid/invalid
+- [x] Add a complete illustrative archive and playback exchange plus valid/invalid
       cases covering the Issue criteria. Label producer info as illustrative rather
       than inventing a standardized module-info or result-body schema.
-- [ ] Link the contract from `README.md` and cross-check every acceptance criterion,
+- [x] Link the contract from `README.md` and cross-check every acceptance criterion,
       owner decision and applicable protocol invariant.
-- [ ] Run the full validation gate, mechanical review and intent review using the
+- [x] Run the full validation gate, mechanical review and intent review using the
       fixed roles and round limits in `CONTRIBUTING.md`.
-- [ ] Move this plan to `docs/plans/completed/` before final owner review.
+- [x] Move this plan to `docs/plans/completed/` before final owner review.
 
 ## Validation
 
-- [ ] Verify every Issue #16 criterion against a specific section or example.
-- [ ] Parse all JSON/NDJSON examples and check their types, source coordinates,
+- [x] Verify every Issue #16 criterion against a specific section or example.
+- [x] Parse all JSON/NDJSON examples and check their types, source coordinates,
       event ordering, file sizes and terminal behavior against both contracts.
-- [ ] Check the failure cases: malformed/truncated journal, unsafe/duplicate ZIP
+- [x] Check the failure cases: malformed/truncated journal, unsafe/duplicate ZIP
       paths, missing/corrupt payloads, unsupported versions, mismatched settings,
       output collisions and background digest mismatch/failure.
-- [ ] Check control cases: no-op tune/patch, rejected changes, pause/resume,
+- [x] Check control cases: no-op tune/patch, rejected changes, pause/resume,
       speed/max, early stop, paused stop, EOF and stop during finalization.
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo clippy -p dmd --features native --all-targets --locked` with an empty
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo clippy -p dmd --features native --all-targets --locked` with an empty
       core directory, as documented in `CONTRIBUTING.md`
-- [ ] `cargo test --locked`
-- [ ] `cargo test -p dmd-native --locked`
-- [ ] `cargo build --release --locked`, after the gate passes
+- [x] `cargo test --locked`
+- [x] `cargo test -p dmd-native --locked`
+- [x] `cargo build --release --locked`, after the gate passes
+
+Documentation checks: `docs/replay.md` covers entry points and types under
+“Recording set and versions” and “ZIP layout and metadata”; compatibility under
+“Recording set and versions”; event mapping and ordering under “Journal framing
+and boundaries” and “Stored data and generated events”; controls and terminal
+behavior under “Settings, pacing and controls”; asset safety and limits under
+“Assets, containment and resource limits”; failure classification under “Lazy
+validation and failure classification”; and examples under “Complete illustrative
+recording and playback”. All 10 fenced JSON/NDJSON examples (41 objects) were
+parsed, and the illustrative signal and ZIP were reconstructed to check the digest,
+source metadata, entry names, CRCs, payload size, journal ordering, protocol event
+shapes and FIFO acknowledgements. Failure/control tables were checked for the
+listed cases; they describe expected behavior, not execution of a replay reader.
+Correction-round validation also checks that `event` takes precedence over the
+service discriminator: the worked first-block result preserves the producer value
+`record:"finalization"` in both the archive journal and stdout, without entering
+finalization. The example checker dispatches by `event` first. Unsafe archive and
+descriptor traversal cases use descriptions of parent-directory components rather
+than literal escaping path tokens, preserving both cases under the content policy.
+The full local validation gate passes. Mechanical review accepted one discriminator
+collision finding, corrected it, and returned no substantive findings in its second
+round; none were declined. Intent review returned no substantive findings across
+acceptance coverage, owner decisions/protocol, architectural invariants/scope and
+lifecycle/document consistency. The release build passes. Owner approval, Ready
+checks and squash merge follow the completion lifecycle.
 
 ## Post-completion
 
