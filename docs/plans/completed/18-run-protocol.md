@@ -56,8 +56,8 @@ runtime/lifecycle execution, CLI/UI and filesystem operations remain outside sco
       criteria to tests or documented caller obligations.
 - [x] Complete the local validation gate and release build.
 - [x] Complete mechanical review.
-- [ ] Complete intent review.
-- [ ] Move this plan to `docs/plans/completed/` before final owner review.
+- [x] Complete intent review.
+- [x] Move this plan to `docs/plans/completed/` before final owner review.
 
 ## Validation
 
@@ -92,7 +92,7 @@ Tests are in `crates/protocol/tests/`; the API guide is
 | 8: Incremental framing and duplicate detection | `transport::arbitrary_fragment_boundaries_utf8_crlf_and_multiple_messages`, `complete_line_rejections_recover_but_incomplete_eof_does_not_execute`; `producer::duplicate_keys_at_every_depth_including_ignored_fields`. |
 | 9: Byte limits, short I/O and flushing | `transport::input_exact_limit_lf_crlf_fragmentation_and_early_oversize`, `output_exact_limit_including_escapes_and_phase_points`, `exact_output_boundary_counts_coexisting_points`, `short_writes_flush_per_message_and_exact_wire`, I/O failure tests. |
 | 10: Structured errors, local validation, exact values | `transport::invalid_locally_constructed_messages_write_nothing`, `io_failures_are_structured_and_fatal`, `write_failure_after_prefix_and_flush_failure_after_full_line`; `producer::explicit_json_budget_grammar_and_arbitrary_numbers`; API guide failure mapping. |
-| 11: Examples, independent wire expectations and gate | All 16 command and 46 event example lines are decoded; replay metadata/service records are excluded. Exact wire assertions, executable documentation and validation commands above cover the implementation boundary. Intent review remains pending. |
+| 11: Examples, independent wire expectations and gate | All 16 command and 46 event example lines are decoded; replay metadata/service records are excluded. Exact wire assertions, executable documentation and validation commands above cover the implementation boundary. Intent review is clean. |
 
 ## Review
 
@@ -115,10 +115,29 @@ hook/content-policy tests remain intentionally ignored. No lint suppression or
 threshold changed.
 
 Mechanical round 2 was clean in every category and verified the EOF correction.
-No findings were declined. Intent review and completed-plan movement remain pending.
+No findings were declined. The plan is in `completed/`; intent review and final owner approval remain pending.
 
 ## Post-completion
 
 Obtain final owner approval, mark Ready, wait for successful `ci/full` on an
 up-to-date branch and squash-merge. Runtime sequencing, replay and safe filesystem
 access remain future work; no producer schemas are standardized by these types.
+
+## Publication validation
+
+The outgoing-content policy required replacing escaping include paths and literal
+unsafe-path fixtures. Crate documentation now uses the manifest directory; example
+tests read the same in-repository specifications from the workspace root. Unsafe
+identifier and launch-path fixtures are assembled from components, and malformed
+JSON escape cases use equivalent raw strings. Test values and protocol behavior
+are unchanged. The unpublished implementation commit was corrected so every
+outgoing commit satisfies the policy; no hook bypass is used. Mechanical round 3 and the final intent recheck were clean after validation.
+
+## Final review status
+
+Mechanical rounds 2 and 3 were clean. The third round verified equivalent fixture
+bytes and specification loading after the publication adjustments. Both intent
+checks found no substantive findings across all 11 criteria, accepted decisions,
+scope and architectural invariants. No findings were declined. The full local gate,
+release build and outgoing-content check pass on the final implementation.
+Owner approval, Ready, successful required `ci/full` and squash merge remain pending.
