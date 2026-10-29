@@ -1,6 +1,6 @@
 [workspace]
-members = ["crates/protocol", "crates/cli", "crates/native", "crates/core-sys"]
-default-members = ["crates/protocol", "crates/cli"]
+members = ["crates/replay", "crates/protocol", "crates/cli", "crates/native", "crates/core-sys"]
+default-members = ["crates/replay", "crates/protocol", "crates/cli"]
 resolver = "3"
 
 [workspace.package]
