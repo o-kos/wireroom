@@ -64,6 +64,15 @@ contents if they require a stable snapshot.
 The portable limits in `docs/replay.md` apply. Central directory memory is bounded
 by 64 MiB; entry/reference maps by 65,536 names; streaming buffers by 8 KiB per
 reader; metadata and each journal line by 16 MiB, plus their parsed exact JSON trees.
+Archive setup also has an implementation work budget of 64 MiB of aggregate
+central-directory bytes read and parsed across all EOCD candidates. A single
+candidate can use the full portable 64 MiB directory limit. Opaque comments can
+require retrying candidates; exhausting the aggregate budget fails explicitly with
+`Error::Resource` before reading another candidate directory. The budget does not
+change the format's per-directory limit, and a profile-valid archive with many
+ambiguous comment candidates may exceed this implementation budget. The same
+last-22-byte candidate is never validated twice during fallback.
+
 JSON has at most 128 containers on a nesting path. No whole journal/block buffer,
 compression-ratio heuristic, or extraction directory is used. Allocation failure
 at the process allocator remains platform-defined; explicit format budgets fail

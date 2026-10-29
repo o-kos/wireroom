@@ -27,13 +27,17 @@ makes a recording a usable stand-in for a real run.
 
 ## Status
 
-Early bootstrap. Work starts from `dmd` and the shared protocol types. The Wireroom
-interface will be built with GPUI; its accepted window concept is in
-[`docs/ui`](docs/ui/README.md). The event protocol and the recording format are being
-specified before implementation. The [run protocol](docs/protocol.md) defines
-the process exchange and records the remaining producer-schema limitations. The
-[replay recording contract](docs/replay.md) defines companion archives, validation
-and fixed-result playback. See `docs/plans/` for the active work.
+The [run protocol](docs/protocol.md) and [replay recording contract](docs/replay.md)
+are specified, with producer schemas still deferred. The shared
+[`dmd-protocol`](crates/protocol/README.md) library implements individual messages
+and bounded NDJSON codecs. The read-only [`dmd-replay`](crates/replay/README.md)
+library validates companion archives and metadata, reads journal boundaries and
+streams payloads with integrity checks.
+
+Runtime, playback controls and the Wireroom interface remain future work; the CLI
+commands still report that they are not implemented. The interface will use GPUI;
+its accepted window concept is in [`docs/ui`](docs/ui/README.md). See `docs/plans/`
+for the active work.
 
 ## Building
 

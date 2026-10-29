@@ -67,37 +67,82 @@ pub(crate) fn extras(b: &[u8]) -> Result<BTreeMap<u16, &[u8]>, Error> {
     }
     Ok(fields)
 }
+// This is an implementation work budget, separate from the portable per-index limit.
+const INDEX_WORK_BYTES: u64 = profile::DIRECTORY;
+struct IndexBudget {
+    remaining: u64,
+}
+impl IndexBudget {
+    fn charge(&mut self, bytes: u64) -> Result<(), Error> {
+        self.remaining = self
+            .remaining
+            .checked_sub(bytes)
+            .ok_or(Error::Resource("archive index work"))?;
+        Ok(())
+    }
+}
 pub(crate) fn scan<R: Read + Seek + ?Sized>(r: &mut R) -> Result<Index, Error> {
+    scan_with_budget(r, INDEX_WORK_BYTES)
+}
+fn scan_with_budget<R: Read + Seek + ?Sized>(r: &mut R, work_bytes: u64) -> Result<Index, Error> {
     let length = r.seek(SeekFrom::End(0))?;
     profile::limit(length, profile::ARCHIVE, "archive bytes")?;
     if length < 22 {
         return Err(Error::Archive("end directory"));
     }
+    let mut budget = IndexBudget {
+        remaining: work_bytes,
+    };
+    let mut failure = Error::Archive("end directory");
     let fixed = bytes(r, length - 22, 22)?;
-    if u32_at(&fixed, 0) == 0x06054b50
-        && u16_at(&fixed, 20) == 0
-        && let Ok(index) =
-            directory_layout(r, &fixed, length - 22).and_then(|layout| read_directory(r, layout))
-    {
-        return Ok(index);
+    let fixed_candidate = u32_at(&fixed, 0) == 0x06054b50 && u16_at(&fixed, 20) == 0;
+    if fixed_candidate {
+        match candidate(r, &fixed, length - 22, &mut budget)? {
+            Attempt::Accepted(index) => return Ok(index),
+            Attempt::Rejected(error) => failure = error,
+        }
     }
     let tail_len = length.min(65557) as usize;
     let tail = bytes(r, length - tail_len as u64, tail_len)?;
-    let mut failure = Error::Archive("end directory");
     for end in (0..tail.len() - 21).rev() {
-        if u32_at(&tail, end) != 0x06054b50
+        if (fixed_candidate && end + 22 == tail.len())
+            || u32_at(&tail, end) != 0x06054b50
             || end + 22 + usize::from(u16_at(&tail, end + 20)) != tail.len()
         {
             continue;
         }
-        match directory_layout(r, &tail[end..], length - tail_len as u64 + end as u64)
-            .and_then(|layout| read_directory(r, layout))
-        {
-            Ok(index) => return Ok(index),
-            Err(error) => failure = error,
+        match candidate(
+            r,
+            &tail[end..],
+            length - tail_len as u64 + end as u64,
+            &mut budget,
+        )? {
+            Attempt::Accepted(index) => return Ok(index),
+            Attempt::Rejected(error) => failure = error,
         }
     }
     Err(failure)
+}
+enum Attempt {
+    Accepted(Index),
+    Rejected(Error),
+}
+fn candidate<R: Read + Seek + ?Sized>(
+    r: &mut R,
+    end: &[u8],
+    at: u64,
+    budget: &mut IndexBudget,
+) -> Result<Attempt, Error> {
+    let layout = match directory_layout(r, end, at) {
+        Ok(layout) => layout,
+        Err(error) => return Ok(Attempt::Rejected(error)),
+    };
+    // Exhausted work cannot be mistaken for a false signature in opaque comments.
+    budget.charge(layout.size)?;
+    Ok(match read_directory(r, layout) {
+        Ok(index) => Attempt::Accepted(index),
+        Err(error) => Attempt::Rejected(error),
+    })
 }
 struct Directory {
     count: u64,
@@ -438,5 +483,131 @@ mod tests {
             scan(&mut Cursor::new(indexed(&entries))),
             Err(Error::Resource("entry count"))
         ));
+    }
+    struct Counted<'a> {
+        inner: Cursor<&'a [u8]>,
+        index_reads: usize,
+        index_bytes: u64,
+    }
+    impl Read for Counted<'_> {
+        fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+            let index = self.inner.position() == 0;
+            let n = self.inner.read(output)?;
+            if index {
+                self.index_reads += 1;
+                self.index_bytes += n as u64;
+            }
+            Ok(n)
+        }
+    }
+    impl Seek for Counted<'_> {
+        fn seek(&mut self, position: SeekFrom) -> std::io::Result<u64> {
+            self.inner.seek(position)
+        }
+    }
+    fn observed(data: &[u8]) -> Counted<'_> {
+        Counted {
+            inner: Cursor::new(data),
+            index_reads: 0,
+            index_bytes: 0,
+        }
+    }
+    fn fake_candidates(count: usize) -> (Vec<u8>, u64, u64) {
+        let mut entries = required();
+        for n in 0..6000 {
+            entries.push((format!("extensions/{n}"), 0));
+        }
+        let mut data = indexed(&entries);
+        let base = data.len() as u64 - 98;
+        let original_end = data.len() - 22;
+        data[original_end + 20..].copy_from_slice(&((count * 22) as u16).to_le_bytes());
+        let mut work = base;
+        for n in 0..count {
+            let at = data.len() as u64;
+            work += at;
+            data.extend(0x06054b50u32.to_le_bytes());
+            data.extend([0; 4]);
+            data.extend((entries.len() as u16).to_le_bytes());
+            data.extend((entries.len() as u16).to_le_bytes());
+            data.extend((at as u32).to_le_bytes());
+            data.extend(0u32.to_le_bytes());
+            data.extend((((count - n - 1) * 22) as u16).to_le_bytes());
+        }
+        (data, base, work)
+    }
+    #[test]
+    fn aggregate_candidate_budget_stops_index_reads_without_timing_assumptions() {
+        let (data, base, _) = fake_candidates(400);
+        let mut source = observed(&data);
+        assert!(matches!(
+            scan(&mut source),
+            Err(Error::Resource("archive index work"))
+        ));
+        assert!(source.index_reads > 1);
+        assert!(source.index_reads < 400);
+        assert!(source.index_bytes <= INDEX_WORK_BYTES);
+        assert!(source.index_reads as u64 <= INDEX_WORK_BYTES / base);
+    }
+    #[test]
+    fn aggregate_budget_equality_succeeds_and_excess_stops_before_next_read() {
+        let (data, base, work) = fake_candidates(3);
+        let mut source = observed(&data);
+        assert!(scan_with_budget(&mut source, work).is_ok());
+        assert_eq!(source.index_reads, 4);
+        assert_eq!(source.index_bytes, work);
+        let mut source = observed(&data);
+        assert!(matches!(
+            scan_with_budget(&mut source, work - 1),
+            Err(Error::Resource("archive index work"))
+        ));
+        assert_eq!(source.index_reads, 3);
+        assert_eq!(source.index_bytes, work - base);
+    }
+    #[test]
+    fn first_candidate_can_use_the_entire_portable_directory_limit() {
+        let mut entries = required();
+        for n in 0..1100 {
+            entries.push((format!("extensions/{n}"), 0));
+        }
+        let mut headers: Vec<_> = entries
+            .iter()
+            .map(|(name, size)| central(name, *size))
+            .collect();
+        let mut padding = profile::DIRECTORY as usize - headers.iter().map(Vec::len).sum::<usize>();
+        let mut data = Vec::with_capacity(profile::DIRECTORY as usize + 22);
+        for header in &mut headers {
+            let length = padding.min(65535);
+            padding -= length;
+            header[32..34].copy_from_slice(&(length as u16).to_le_bytes());
+            data.extend_from_slice(header);
+            data.resize(data.len() + length, 0);
+        }
+        assert_eq!(padding, 0);
+        assert_eq!(data.len() as u64, profile::DIRECTORY);
+        data.extend(0x06054b50u32.to_le_bytes());
+        data.extend([0; 4]);
+        data.extend((entries.len() as u16).to_le_bytes());
+        data.extend((entries.len() as u16).to_le_bytes());
+        data.extend((profile::DIRECTORY as u32).to_le_bytes());
+        data.extend([0; 6]);
+        let mut source = observed(&data);
+        assert!(scan(&mut source).is_ok());
+        assert_eq!(source.index_reads, 1);
+        assert_eq!(source.index_bytes, INDEX_WORK_BYTES);
+        let mut source = observed(&data);
+        assert!(matches!(
+            scan_with_budget(&mut source, INDEX_WORK_BYTES - 1),
+            Err(Error::Resource("archive index work"))
+        ));
+        assert_eq!(source.index_reads, 0);
+    }
+    #[test]
+    fn false_comment_candidate_profile_limit_is_not_aggregate_exhaustion() {
+        let (mut data, _, _) = fake_candidates(1);
+        let end = data.len() - 22;
+        data[end + 12..end + 16].copy_from_slice(&((profile::DIRECTORY + 1) as u32).to_le_bytes());
+        let mut source = observed(&data);
+        assert!(scan(&mut source).is_ok());
+        assert_eq!(source.index_reads, 1);
     }
 }

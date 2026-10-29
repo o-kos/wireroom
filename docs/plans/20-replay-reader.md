@@ -34,6 +34,10 @@ UI, signal decoding/hashing and output materialization remain outside scope.
   protocol event, and the service marker as `Record::Finalization`.
 - Cap distinct remembered asset references at 65,536; exceeding this independent
   bookkeeping budget fails explicitly instead of growing with journal length.
+- Bound aggregate central-directory candidate validation work to 64 MiB of index
+  bytes per setup, independently of the portable per-index limit. Charge before
+  reading each accepted candidate layout; exhaustion is a fatal resource failure,
+  while rejected opaque-comment candidates retain normal fallback behavior.
 
 ## Rejected alternatives
 
@@ -91,7 +95,7 @@ only its last 22 locator bytes before reading the central directory.
 ## Validation results
 
 The full local gate and release build passed on the implementation. The new crate
-has 38 Rust tests and one compile-checked documentation example; its runnable
+has 42 Rust tests and one compile-checked documentation example; its runnable
 `inspect` example builds with the normal all-targets checks. Existing protocol,
 CLI, dependency-policy and core-independent native tests pass. The eight existing
 hook/content-policy tests remain intentionally ignored because their source was
@@ -126,6 +130,28 @@ validation passes 38 Rust tests and the documentation example, formatting and
 crate all-targets Clippy. The full local gate and release rebuild also passed
 after the corrections. The next mechanical round remains pending; round 1 is
 not recorded as clean.
+
+### Mechanical round 2
+
+One substantive bounded-work finding was accepted; none were declined. Prior
+round corrections were clean. Repeated EOCD-shaped values in an archive comment
+could repeatedly parse a large central directory, multiplying setup cost despite
+bounded individual allocations.
+
+Setup now limits aggregate candidate directory bytes read/parsed to an explicit
+64 MiB implementation budget. Charges occur before reads outside the recoverable
+candidate-result path, so exhaustion stops scanning immediately. A format/profile
+limit failure on a false opaque-comment candidate remains recoverable. Fallback
+also skips the fixed last-22-byte candidate when it was already attempted.
+
+Instrumented regressions use 400 complete false candidates and assert bounded
+read counts/bytes without timing assertions. Exact aggregate-budget equality
+succeeds, one-byte excess stops before the next index read, a first candidate can
+consume the full portable 64 MiB directory limit, and an oversized false candidate
+still falls back to the real index. The previous opaque-comment regressions remain
+covered. The 42 Rust tests, documentation example, full local gate and release
+rebuild pass after correction. The third, final mechanical round remains pending.
+Round 2 is not recorded as clean.
 
 ## Post-completion
 
