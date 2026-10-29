@@ -31,8 +31,9 @@ Early bootstrap. Work starts from `dmd` and the shared protocol types. The Wirer
 interface will be built with GPUI; its accepted window concept is in
 [`docs/ui`](docs/ui/README.md). The event protocol and the recording format are being
 specified before implementation. The [run protocol](docs/protocol.md) defines
-the process exchange and records the remaining producer-schema limitations. See
-`docs/plans/` for the active work.
+the process exchange and records the remaining producer-schema limitations. The
+[replay recording contract](docs/replay.md) defines companion archives, validation
+and fixed-result playback. See `docs/plans/` for the active work.
 
 ## Building
 
