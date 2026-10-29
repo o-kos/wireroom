@@ -115,11 +115,12 @@ hook/content-policy tests remain intentionally ignored. No lint suppression or
 threshold changed.
 
 Mechanical round 2 was clean in every category and verified the EOF correction.
-No findings were declined. The plan is in `completed/`; intent review and final owner approval remain pending.
+No findings were declined. The plan is in `completed/`; subsequent intent checks
+and final owner approval are recorded below.
 
 ## Post-completion
 
-Obtain final owner approval, mark Ready, wait for successful `ci/full` on an
+Owner approval is recorded below. Mark Ready, wait for successful `ci/full` on an
 up-to-date branch and squash-merge. Runtime sequencing, replay and safe filesystem
 access remain future work; no producer schemas are standardized by these types.
 
@@ -140,4 +141,5 @@ bytes and specification loading after the publication adjustments. Both intent
 checks found no substantive findings across all 11 criteria, accepted decisions,
 scope and architectural invariants. No findings were declined. The full local gate,
 release build and outgoing-content check pass on the final implementation.
-Owner approval, Ready, successful required `ci/full` and squash merge remain pending.
+The owner approved the final change on 2026-10-29. Ready, successful required
+`ci/full` and squash merge remain pending.
