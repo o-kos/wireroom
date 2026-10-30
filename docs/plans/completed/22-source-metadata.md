@@ -69,17 +69,14 @@ All test paths below are relative to `crates/source/tests/`.
 | Unsupported/malformed/errors | `conformance.rs`: `unsupported_profiles_have_typed_reasons` covers excluded containers, tags, channels, widths and fmt sizes; malformed tests cover identification and headerless bytes. `bounded.rs` injects errors and unexpected EOF at every required read and errors at every required seek. Production source has no unwrap/expect or lint suppressions. |
 | Identity/bounded inspection | `bounded.rs`: virtual near-4-GiB sample and ancillary payloads reject any payload read; u64::MAX actual length is rejected without overflow; short/interrupted reads preserve metadata. `identity.rs` covers independent/reusable cursors, original identity after pathname replacement on Unix, cursor lifetime and externally modified contents. |
 | Work budget | `bounded.rs`: `budget_equality_and_excess_measure_headers_without_scanning_remainder` asserts exact reads, bytes, seeks and stopping position for 65,536, 65,537 and 65,636 chunks. |
-| Composition/evidence/lifecycle | `composition.rs` extracts exact source, metadata and journal from `docs/replay.md` with LF and CRLF, passes derived frames to dmd-replay and asserts boundaries/finalization. Stored ZIP helper is reused locally from replay conformance tests without importing their test module. Crate README documents support, failure stages, stability and later hash-worker obligations. Local gate/release passed; external reviews remain pending. |
+| Composition/evidence/lifecycle | `composition.rs` extracts exact source, metadata and journal from `docs/replay.md` with LF and CRLF, passes derived frames to dmd-replay and asserts boundaries/finalization. Stored ZIP helper is reused locally from replay conformance tests without importing their test module. Crate README documents support, failure stages, stability and later hash-worker obligations. Local gate/release and independent reviews passed; integration validation is recorded below. |
 
 ## Validation
 
-- [x] Verify implementation acceptance criteria with independent expectations;
-  external review and later lifecycle steps remain pending below.
+- [x] Verify implementation acceptance criteria with independent expectations.
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
-- [x] Native Clippy with an empty core directory per CONTRIBUTING.md.
 - [x] `cargo test --locked`
-- [x] `cargo test -p dmd-native --locked`
 - [x] `cargo build --release --locked` after the gate.
 
 Local Linux validation on 2026-10-30 also passed
@@ -125,9 +122,25 @@ intent follow-up were clean in every category and upheld the earlier full
 reviews. No review finding was raised, accepted or declined. Draft `ci/quick`
 passed on the implementation; the final documentation push must pass it too.
 
-Keep the Pull Request Draft for final owner review as requested.
-Ready status, successful required `ci/full` on an
-up-to-date branch and squash merge require the later owner-approved completion.
+### Integration after scaffold removal
+
+The owner requested completion of this same Pull Request after #25 removed the
+unused native scaffold. The branch is rebased onto current `main`; the workspace
+contains only source, replay, protocol and CLI. No removed crate, dependency,
+feature, build script or gate step is restored. Source implementation and all
+17 tests are unchanged from the reviewed version. Active workspace instructions
+now list the source library.
+
+The validation checklist uses the current CONTRIBUTING.md gate. The original
+implementation also passed the then-applicable native checks before #25;
+those checks no longer exist in the current workspace.
+
+The current full local gate, all 17 source tests, release rebuild and CLI build
+with no default features passed after integration. Final integration reviews
+remain pending. The owner authorized
+completion and merging of the existing Pull Request on 2026-10-30. Ready status,
+successful required `ci/full` on an up-to-date branch and squash merge remain
+the final completion steps.
 
 ## Post-completion
 
