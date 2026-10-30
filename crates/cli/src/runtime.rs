@@ -390,6 +390,6 @@ impl<W: Write> Runtime<W> {
     }
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(test)]
 #[path = "runtime_tests.rs"]
 mod tests;

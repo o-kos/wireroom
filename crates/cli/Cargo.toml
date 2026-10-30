@@ -11,8 +11,11 @@ clap.workspace = true
 dmd-protocol.workspace = true
 dmd-replay.workspace = true
 dmd-source.workspace = true
-libc = "0.2.189"
+tempfile = "3.27.0"
 sha2 = "0.10.9"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.189"
 
 [lints]
 workspace = true

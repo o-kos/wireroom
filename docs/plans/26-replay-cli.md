@@ -38,7 +38,7 @@ excluded local mutation, UID/mount restrictions or descriptor exhaustion.
       finalization and cancellable hashing.
 - [x] Revise Issue/PR scope and this plan for the owner-requested trust model before
       changing implementation.
-- [ ] Replace Linux output machinery with portable staging/publication and simplify
+- [x] Replace Linux output machinery with portable staging/publication and simplify
       output tests while preserving replay behavior.
 - [ ] Align active contracts, architecture instructions, CLI guides and changelog.
 - [ ] Run pinned formatting, all-target locked Clippy, locked workspace tests and

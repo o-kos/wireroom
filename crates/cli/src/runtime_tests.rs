@@ -15,16 +15,12 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Fixture(std::path::PathBuf);
 impl Fixture {
     fn new(journal: &str) -> Self {
-        use std::os::unix::fs::DirBuilderExt;
         let root = std::env::temp_dir().join(format!(
             "dmd-unit-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        std::fs::DirBuilder::new()
-            .mode(0o700)
-            .create(&root)
-            .unwrap();
+        std::fs::create_dir(&root).unwrap();
         let spec = std::fs::read_to_string(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .ancestors()
@@ -188,24 +184,42 @@ fn finalization_preserves_end_and_rejects_nonstop_in_order() {
 }
 
 #[test]
-fn retained_publication_rejects_replacement_and_hardlink_alias() {
+fn repeated_publication_preserves_file_and_rejects_conflicting_size() {
     let fixture =
         Fixture::new("{\"event\":\"progress\",\"frame\":8}\n{\"record\":\"finalization\"}\n");
     let Command::Start(start) = fixture.start() else {
         panic!()
     };
     let (mut run, _) = Run::setup(start).unwrap();
-    let DecodedEvent::Known(Event::Result(result))=Event::decode(r#"{"event":"result","samples":[0,8],"binary":[{"id":"id","type":"file","body":{},"path":"files/message.bin","size":4}]}"#,Context {frames:Some(8)}).unwrap() else { panic!() };
+    let DecodedEvent::Known(Event::Result(mut result)) = Event::decode(
+        r#"{"event":"result","samples":[0,8],"binary":[{"id":"id","type":"file","body":{},"path":"files/message.bin","size":4}]}"#,
+        Context { frames: Some(8) },
+    ).unwrap() else { panic!() };
     run.output.materialize(&run.recording, &result).unwrap();
     let path = fixture.0.join("out/files/message.bin");
-    std::fs::hard_link(&path, fixture.0.join("alias")).unwrap();
+    let timestamp = std::time::UNIX_EPOCH + Duration::from_secs(1_000_000);
+    std::fs::File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_times(std::fs::FileTimes::new().set_modified(timestamp))
+        .unwrap();
+    let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+    run.output.materialize(&run.recording, &result).unwrap();
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().modified().unwrap(),
+        modified
+    );
+    assert_eq!(std::fs::read(&path).unwrap(), b"TEST");
+    let dmd_protocol::Descriptor::File { size, .. } = &mut result.binary.as_mut().unwrap()[0]
+    else {
+        panic!()
+    };
+    *size = 5;
     assert!(run.output.materialize(&run.recording, &result).is_err());
-    std::fs::remove_file(fixture.0.join("alias")).unwrap();
-    std::fs::rename(&path, fixture.0.join("retained")).unwrap();
-    std::fs::write(&path, b"FAKE").unwrap();
-    assert!(run.output.materialize(&run.recording, &result).is_err());
-    assert_eq!(std::fs::read(fixture.0.join("retained")).unwrap(), b"TEST");
+    assert_eq!(std::fs::read(&path).unwrap(), b"TEST");
 }
+
 #[test]
 fn journal_cancellation_is_checked_before_scanning_extensions() {
     let fixture = Fixture::new(
@@ -249,11 +263,6 @@ fn max_then_numeric_in_one_fifo_batch_removes_pending_wait() {
     budget.credit(run.clock.take());
     assert!(budget.ready());
     assert_eq!(run.snapshot.state, State::Paused);
-}
-
-#[test]
-fn unsupported_filesystem_is_rejected_without_fallback() {
-    assert!(Output::open("/proc").is_err());
 }
 
 #[test]

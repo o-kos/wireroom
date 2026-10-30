@@ -1,4 +1,3 @@
-#![cfg(target_os = "linux")]
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -12,6 +11,7 @@ use std::{
     time::Duration,
 };
 
+#[cfg(target_os = "linux")]
 #[path = "support/packet_process.rs"]
 mod packet;
 #[path = "support/archive.rs"]
@@ -24,13 +24,12 @@ struct Fixture {
 }
 impl Fixture {
     fn new(journal: &str, frames: u32) -> Self {
-        use std::os::unix::fs::DirBuilderExt;
         let root = std::env::temp_dir().join(format!(
             "dmd-test-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        fs::create_dir(&root).unwrap();
         let mut wav = b"RIFF".to_vec();
         wav.extend((36 + frames * 2).to_le_bytes());
         wav.extend(b"WAVEfmt ");
@@ -182,6 +181,7 @@ fn stored(events: &[Value]) -> Vec<Value> {
         .collect()
 }
 
+#[cfg(target_os = "linux")]
 fn example_json_blocks() -> Vec<Vec<Value>> {
     let spec = fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -213,6 +213,7 @@ fn example_json_blocks() -> Vec<Vec<Value>> {
         .collect()
 }
 #[test]
+#[cfg(target_os = "linux")]
 fn specification_example_preserves_payload_and_producer_values() {
     let fixture = Fixture::example();
     let exchange = example_json_blocks();
@@ -332,63 +333,6 @@ fn invalid_closing_boundary_does_not_emit_provisional_result() {
     assert_eq!(events.last().unwrap()["frame"], 0);
     assert!(!p.child.wait().unwrap().success());
 }
-#[test]
-fn collision_and_symlink_ancestors_never_overwrite() {
-    use std::os::unix::fs::symlink;
-    for link in [false, true] {
-        let fixture = Fixture::example();
-        fs::create_dir(fixture.root.join("out")).unwrap();
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(fixture.root.join("out"), fs::Permissions::from_mode(0o700))
-                .unwrap();
-        }
-        fs::create_dir(fixture.root.join("elsewhere")).unwrap();
-        if link {
-            symlink(
-                fixture.root.join("elsewhere"),
-                fixture.root.join("out/files"),
-            )
-            .unwrap();
-        } else {
-            fs::create_dir(fixture.root.join("out/files")).unwrap();
-            {
-                use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(
-                    fixture.root.join("out/files"),
-                    fs::Permissions::from_mode(0o700),
-                )
-                .unwrap();
-            }
-            fs::write(fixture.root.join("out/files/message.bin"), b"KEEP").unwrap();
-        }
-        let mut p = fixture.process();
-        p.send(fixture.start(false, json!("max")));
-        let events = p.finish();
-        assert_eq!(events.last().unwrap()["reason"], "error");
-        assert!(!p.child.wait().unwrap().success());
-        assert!(!fixture.root.join("elsewhere/message.bin").exists());
-        if !link {
-            assert_eq!(
-                fs::read(fixture.root.join("out/files/message.bin")).unwrap(),
-                b"KEEP"
-            );
-        }
-        assert_eq!(events.iter().filter(|e| e["event"] == "result").count(), 2);
-    }
-}
-#[test]
-fn writable_ancestry_is_rejected_at_setup() {
-    use std::os::unix::fs::PermissionsExt;
-    let fixture = Fixture::example();
-    fs::set_permissions(&fixture.root, fs::Permissions::from_mode(0o777)).unwrap();
-    let mut p = fixture.process();
-    p.send(fixture.start(false, json!("max")));
-    let events = p.finish();
-    assert_eq!(events[0]["fatal"], true);
-    assert_eq!(events[1]["reason"], "error");
-    assert!(!p.child.wait().unwrap().success());
-}
 
 fn result(path: &str, size: u64) -> Value {
     json!({"event":"result","samples":[0,8],"binary":[{"id":"opaque/id","type":"custom","body":{"n":18446744073709551615u64},"path":path,"size":size}]})
@@ -397,7 +341,7 @@ fn journal(lines: &[Value]) -> String {
     lines.iter().map(|v| format!("{v}\n")).collect()
 }
 #[test]
-fn repeated_asset_reuses_retained_file_without_rewriting() {
+fn repeated_asset_reuses_file_without_rewriting() {
     let data = journal(&[
         json!({"event":"progress","frame":8}),
         json!({"record":"finalization"}),
@@ -585,6 +529,7 @@ fn signal_and_archive_path_replacement_keeps_opened_identities() {
 }
 
 #[test]
+#[cfg(unix)]
 fn symlink_output_root_and_nonregular_source_fail_before_started() {
     use std::os::unix::fs::symlink;
     let f = Fixture::example();
@@ -605,23 +550,7 @@ fn symlink_output_root_and_nonregular_source_fail_before_started() {
 }
 
 #[test]
-fn preexisting_public_output_is_rejected_instead_of_changing_permissions() {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
-    let f = Fixture::example();
-    fs::create_dir(f.root.join("out")).unwrap();
-    fs::set_permissions(f.root.join("out"), fs::Permissions::from_mode(0o755)).unwrap();
-    let mut p = f.process();
-    p.send(f.start(false, json!("max")));
-    let events = p.finish();
-    assert_eq!(events[0]["fatal"], true);
-    assert!(!p.child.wait().unwrap().success());
-    assert_eq!(
-        fs::metadata(f.root.join("out")).unwrap().mode() & 0o777,
-        0o755
-    );
-}
-
-#[test]
+#[cfg(target_os = "linux")]
 fn stdout_failure_exits_nonzero_after_started_and_active_lookahead() {
     let f = Fixture::example();
     let mut p = packet::PacketProcess::new(&f.root);
@@ -637,4 +566,197 @@ fn stdout_failure_exits_nonzero_after_started_and_active_lookahead() {
     let replacement = BufReader::new(fs::File::open(f.root.join("example.wav")).unwrap());
     drop(std::mem::replace(&mut p.output, replacement));
     assert!(!packet::wait(&mut p.child).success());
+}
+
+#[test]
+fn existing_destinations_and_nondirectory_ancestors_are_preserved() {
+    for conflict in ["files", "files/message.bin"] {
+        let f = Fixture::example();
+        let path = f.root.join("out").join(conflict);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, b"KEEP").unwrap();
+        let mut p = f.process();
+        p.send(f.start(false, json!("max")));
+        let events = p.finish();
+        assert_eq!(events.last().unwrap()["reason"], "error");
+        assert!(!p.child.wait().unwrap().success());
+        assert_eq!(fs::read(&path).unwrap(), b"KEEP");
+        assert!(events.iter().all(|e| {
+            e["binary"]
+                .as_array()
+                .is_none_or(|descriptors| descriptors.iter().all(|d| d["path"].is_null()))
+        }));
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn symlink_payload_ancestors_and_destinations_are_rejected() {
+    use std::os::unix::fs::symlink;
+    for ancestor in [false, true] {
+        let f = Fixture::example();
+        fs::create_dir(f.root.join("out")).unwrap();
+        fs::create_dir(f.root.join("elsewhere")).unwrap();
+        fs::write(f.root.join("elsewhere/message.bin"), b"KEEP").unwrap();
+        if ancestor {
+            symlink(f.root.join("elsewhere"), f.root.join("out/files")).unwrap();
+        } else {
+            fs::create_dir(f.root.join("out/files")).unwrap();
+            symlink(
+                f.root.join("elsewhere/message.bin"),
+                f.root.join("out/files/message.bin"),
+            )
+            .unwrap();
+        }
+        let mut p = f.process();
+        p.send(f.start(false, json!("max")));
+        let events = p.finish();
+        assert_eq!(events.last().unwrap()["reason"], "error");
+        assert!(!p.child.wait().unwrap().success());
+        assert_eq!(
+            fs::read(f.root.join("elsewhere/message.bin")).unwrap(),
+            b"KEEP"
+        );
+        assert!(events.iter().all(|e| {
+            e["binary"]
+                .as_array()
+                .is_none_or(|descriptors| descriptors.iter().all(|d| d["path"].is_null()))
+        }));
+    }
+}
+
+#[test]
+fn unsafe_descriptor_paths_fail_without_materializing() {
+    for path in [
+        concat!(".", ".", "/escape"),
+        "/absolute",
+        "files/../escape",
+        "files//alias",
+        "files/./alias",
+        r"files\escape",
+        "C:alias",
+    ] {
+        let f = Fixture::new(
+            &journal(&[
+                json!({"event":"progress","frame":8}),
+                json!({"record":"finalization"}),
+                result(path, 4),
+            ]),
+            8,
+        );
+        let mut p = f.process();
+        p.send(f.start(false, json!("max")));
+        let events = p.finish();
+        assert_eq!(events.last().unwrap()["reason"], "error");
+        assert!(!p.child.wait().unwrap().success());
+        assert!(events.iter().all(|e| e["event"] != "result"));
+        assert_eq!(fs::read_dir(f.root.join("out")).unwrap().count(), 0);
+    }
+}
+
+#[test]
+fn all_result_files_are_ready_before_descriptor_and_after_exit() {
+    let mut whole = result("files/message.bin", 4);
+    whole["binary"]
+        .as_array_mut()
+        .unwrap()
+        .push(result("files/second.bin", 4)["binary"][0].clone());
+    let f = Fixture::new(
+        &journal(&[
+            json!({"event":"progress","frame":8}),
+            json!({"record":"finalization"}),
+            whole.clone(),
+        ]),
+        8,
+    );
+    let mut p = f.process();
+    p.send(f.start(false, json!("max")));
+    loop {
+        let event = p.next();
+        if event["event"] == "result" {
+            assert_eq!(event, whole);
+            break;
+        }
+        assert_ne!(event["event"], "finished");
+    }
+    for name in ["message.bin", "second.bin"] {
+        assert_eq!(
+            fs::read(f.root.join("out/files").join(name)).unwrap(),
+            b"TEST"
+        );
+    }
+    assert_eq!(p.finish().last().unwrap()["reason"], "end");
+    p.success();
+    for name in ["message.bin", "second.bin"] {
+        assert_eq!(
+            fs::read(f.root.join("out/files").join(name)).unwrap(),
+            b"TEST"
+        );
+    }
+}
+
+#[test]
+fn payload_failure_cleans_stage_and_preserves_published_and_unrelated_files() {
+    let mut whole = result("files/message.bin", 4);
+    whole["binary"]
+        .as_array_mut()
+        .unwrap()
+        .push(result("files/second.bin", 4)["binary"][0].clone());
+    let f = Fixture::new(
+        &journal(&[
+            json!({"event":"progress","frame":8}),
+            json!({"record":"finalization"}),
+            whole,
+        ]),
+        8,
+    );
+    let archive = f.root.join("example.wav.replay");
+    let mut bytes = fs::read(&archive).unwrap();
+    let index = bytes
+        .windows(4)
+        .enumerate()
+        .filter(|(_, w)| *w == b"TEST")
+        .nth(1)
+        .unwrap()
+        .0;
+    bytes[index] ^= 1;
+    fs::write(archive, bytes).unwrap();
+    fs::create_dir(f.root.join("out")).unwrap();
+    fs::write(f.root.join("out/keep"), b"KEEP").unwrap();
+    let mut p = f.process();
+    p.send(f.start(false, json!("max")));
+    let events = p.finish();
+    assert_eq!(events.last().unwrap()["reason"], "error");
+    assert!(!p.child.wait().unwrap().success());
+    assert!(events.iter().all(|e| e["event"] != "result"));
+    assert_eq!(
+        fs::read(f.root.join("out/files/message.bin")).unwrap(),
+        b"TEST"
+    );
+    assert_eq!(fs::read(f.root.join("out/keep")).unwrap(), b"KEEP");
+    let files: Vec<_> = fs::read_dir(f.root.join("out/files"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(files, [std::ffi::OsString::from("message.bin")]);
+    assert_eq!(fs::read_dir(f.root.join("out")).unwrap().count(), 2);
+}
+
+#[test]
+#[cfg(unix)]
+fn public_caller_ancestry_is_accepted_without_permission_changes() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let f = Fixture::example();
+    fs::set_permissions(&f.root, fs::Permissions::from_mode(0o777)).unwrap();
+    fs::create_dir(f.root.join("out")).unwrap();
+    fs::set_permissions(f.root.join("out"), fs::Permissions::from_mode(0o755)).unwrap();
+    let mut p = f.process();
+    p.send(f.start(false, json!("max")));
+    assert_eq!(p.finish().last().unwrap()["reason"], "end");
+    p.success();
+    assert_eq!(fs::metadata(&f.root).unwrap().mode() & 0o777, 0o777);
+    assert_eq!(
+        fs::metadata(f.root.join("out")).unwrap().mode() & 0o777,
+        0o755
+    );
 }

@@ -26,7 +26,9 @@ pub fn archive_with_prefix(
     ];
     if let Some(bytes) = payload {
         members.push(("payloads/files/message.bin", bytes, bytes, 0));
+        members.push(("payloads/files/second.bin", bytes, bytes, 0));
     }
+    let count = members.len() as u16;
     let mut zip = Vec::new();
     let mut central = Vec::new();
     for (name, data, compressed, method) in members {
@@ -64,7 +66,6 @@ pub fn archive_with_prefix(
     zip.extend(central);
     zip.extend(0x06054b50u32.to_le_bytes());
     zip.extend([0; 4]);
-    let count = if payload.is_some() { 3u16 } else { 2 };
     zip.extend(count.to_le_bytes());
     zip.extend(count.to_le_bytes());
     zip.extend(size.to_le_bytes());
