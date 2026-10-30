@@ -60,6 +60,22 @@ impl Lookahead {
             worker: Some(worker),
         })
     }
+    #[cfg(test)]
+    pub(crate) fn cancellation(&self) -> Arc<AtomicBool> {
+        self.cancel.clone()
+    }
+    #[cfg(test)]
+    pub(crate) fn wait_finished(&self) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while self
+            .worker
+            .as_ref()
+            .is_some_and(|worker| !worker.is_finished())
+        {
+            assert!(std::time::Instant::now() < deadline);
+            thread::yield_now();
+        }
+    }
     pub fn finish(&mut self) -> anyhow::Result<()> {
         self.cancel.store(true, Ordering::Relaxed);
         self.requests.take();

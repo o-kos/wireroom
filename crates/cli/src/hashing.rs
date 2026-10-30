@@ -17,11 +17,17 @@ pub struct Hashing {
 }
 impl Hashing {
     pub fn start(source: Source, expected: String) -> Self {
+        Self::spawn(expected, move |flag| verify(source, flag, &mut |_| Ok(())))
+    }
+    fn spawn(
+        expected: String,
+        task: impl FnOnce(&AtomicBool) -> anyhow::Result<String> + Send + 'static,
+    ) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
         let flag = cancel.clone();
         let result = thread::Builder::new()
             .name("signal-verification".into())
-            .spawn(move || verify(source, &flag));
+            .spawn(move || task(&flag));
         let (worker, unavailable) = match result {
             Ok(worker) => (Some(worker), None),
             Err(error) => (
@@ -36,6 +42,20 @@ impl Hashing {
             expected,
         }
     }
+    #[cfg(test)]
+    pub(crate) fn start_with(
+        source: Source,
+        expected: String,
+        mut hook: impl FnMut(VerificationPoint, &AtomicBool) -> anyhow::Result<()> + Send + 'static,
+    ) -> Self {
+        Self::spawn(expected, move |flag| {
+            verify(source, flag, &mut |point| hook(point, flag))
+        })
+    }
+    #[cfg(test)]
+    pub(crate) fn completed(&self) -> bool {
+        self.worker.as_ref().is_none_or(JoinHandle::is_finished)
+    }
     pub fn finish(&mut self) -> Option<String> {
         self.cancel.store(true, Ordering::Relaxed);
         if let Some(message) = self.unavailable.take() {
@@ -44,16 +64,42 @@ impl Hashing {
         outcome(self.worker.take()?.join(), &self.expected)
     }
 }
-fn verify(source: Source, cancel: &AtomicBool) -> anyhow::Result<String> {
+#[derive(Clone, Copy)]
+pub(crate) enum VerificationPoint {
+    Read,
+    Digested,
+}
+fn verify(
+    source: Source,
+    cancel: &AtomicBool,
+    hook: &mut impl FnMut(VerificationPoint) -> anyhow::Result<()>,
+) -> anyhow::Result<String> {
     let mut cursor = source.cursor()?;
     let before = cursor.file_metadata()?;
-    let (actual, length) = digest(&mut cursor, cancel)?;
+    let (actual, length) = digest(
+        &mut CheckedRead {
+            reader: &mut cursor,
+            hook,
+        },
+        cancel,
+    )?;
+    hook(VerificationPoint::Digested)?;
     let after = cursor.file_metadata()?;
     anyhow::ensure!(
         length == source.metadata().byte_size && stable(&before, &after)?,
         "Signal changed during verification"
     );
     Ok(actual)
+}
+struct CheckedRead<'a, R, F> {
+    reader: &'a mut R,
+    hook: &'a mut F,
+}
+impl<R: Read, F: FnMut(VerificationPoint) -> anyhow::Result<()>> Read for CheckedRead<'_, R, F> {
+    fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+        (self.hook)(VerificationPoint::Read).map_err(std::io::Error::other)?;
+        self.reader.read(output)
+    }
 }
 fn stable(before: &std::fs::Metadata, after: &std::fs::Metadata) -> anyhow::Result<bool> {
     #[cfg(unix)]

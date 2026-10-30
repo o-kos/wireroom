@@ -187,7 +187,9 @@ impl Journal {
     fn byte(&mut self) -> Result<Option<u8>, Error> {
         if self.begin == self.end {
             self.check_cancelled()?;
-            self.end = self.asset.read_chunk(&mut self.buffer)?;
+            self.end = self
+                .asset
+                .read_chunk_cancellable(&mut self.buffer, self.cancellation.as_deref())?;
             self.begin = 0;
         }
         if self.end == 0 {

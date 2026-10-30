@@ -128,14 +128,14 @@ cleanup correction is also in scope.
 
 - [x] Use the kernel's four-byte inode-flag output and cover its casefold mask;
       disarm cleanup after publication and check unpublished identity before unlink.
-- [ ] Cancel inside compressed refill/inflate loops; synchronize cancellation after
+- [x] Cancel inside compressed refill/inflate loops; synchronize cancellation after
       empty-block processing begins, bound further reads, join and finish; preserve
       detected integrity failures and validate the uncancelled compressed fixture.
 - [ ] Execute every documented example request and compare every JSON event through
       the actual process, with speed 1 and packet-pipe boundary synchronization.
-- [ ] Exercise the production pending-clock/control path with injected monotonic time:
+- [x] Exercise the production pending-clock/control path with injected monotonic time:
       lookahead credit, pause, old-speed accounting, resume, max, repeats and stop.
-- [ ] Cover retained-source match, mismatch, read failure, modification and cancellation
+- [x] Cover retained-source match, mismatch, read failure, modification and cancellation
       through runtime completion; check warning frontier/order/count and terminal
       reasons. Break stdout with active workers and verify cancellation and joins.
 - [ ] Commit all owner architecture instructions and runtime documentation together.

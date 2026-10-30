@@ -103,6 +103,7 @@ struct PendingClock {
     active: bool,
     credit: f64,
     last: Instant,
+    now: Box<dyn Fn() -> Instant + Send>,
 }
 impl PendingClock {
     fn new() -> Self {
@@ -110,15 +111,16 @@ impl PendingClock {
             active: false,
             credit: 0.0,
             last: Instant::now(),
+            now: Box::new(Instant::now),
         }
     }
     fn begin(&mut self) {
         self.active = true;
         self.credit = 0.0;
-        self.last = Instant::now();
+        self.last = (self.now)();
     }
     fn account(&mut self, snapshot: &Snapshot) {
-        let now = Instant::now();
+        let now = (self.now)();
         if self.active {
             self.credit += crate::pacing::source_time(now.duration_since(self.last), snapshot);
         }
@@ -230,6 +232,9 @@ impl<W: Write> Runtime<W> {
         self.emit(started)?;
         run.hashing = Some(Hashing::start(run.source.clone(), run.expected.clone()));
         let result = self.play(&mut run);
+        self.complete(&mut run, result)
+    }
+    fn complete(&mut self, run: &mut Run, result: anyhow::Result<()>) -> anyhow::Result<()> {
         let joined = run.lookahead.finish();
         let result = result.and(joined);
         let warning = run.hashing.as_mut().and_then(Hashing::finish);
@@ -353,17 +358,20 @@ impl<W: Write> Runtime<W> {
     }
     fn wait(&mut self, run: &mut Run, mut budget: Budget) -> anyhow::Result<bool> {
         loop {
-            run.clock.account(&run.snapshot);
-            self.commands(run)?;
-            budget.credit(run.clock.take());
-            if run.reason.is_some() {
-                return Ok(self.frame == run.frames);
-            }
-            if run.snapshot.state == State::Playing && budget.ready() {
-                return Ok(true);
+            if let Some(ready) = self.pending(run, &mut budget)? {
+                return Ok(ready);
             }
             thread::sleep(TICK);
         }
+    }
+    fn pending(&mut self, run: &mut Run, budget: &mut Budget) -> anyhow::Result<Option<bool>> {
+        run.clock.account(&run.snapshot);
+        self.commands(run)?;
+        budget.credit(run.clock.take());
+        if run.reason.is_some() {
+            return Ok(Some(self.frame == run.frames));
+        }
+        Ok((run.snapshot.state == State::Playing && budget.ready()).then_some(true))
     }
     fn submit(&mut self, run: &mut Run, unit: &Unit) -> anyhow::Result<()> {
         let mut reader = Reader::new(BufReader::new(unit.file.try_clone()?));

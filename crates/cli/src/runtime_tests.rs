@@ -275,3 +275,244 @@ fn spool_budget_accepts_exact_boundary_and_rejects_excess() {
         worker.finish().unwrap();
     }
 }
+
+fn runtime_run(fixture: &Fixture) -> (Runtime<Vec<u8>>, Run, SyncSender<Input>) {
+    let Command::Start(start) = fixture.start() else {
+        panic!()
+    };
+    let (run, _) = Run::setup(start).unwrap();
+    let (tx, input) = mpsc::sync_channel(16);
+    (
+        Runtime {
+            writer: Writer::new(Vec::new()),
+            input,
+            frame: 0,
+            context: Context { frames: Some(8) },
+        },
+        run,
+        tx,
+    )
+}
+#[test]
+fn pending_clock_accounts_lookahead_controls_and_submission_deterministically() {
+    use std::sync::{Arc, Mutex};
+    let fixture = Fixture::new(
+        "{\"event\":\"progress\",\"frame\":4}\n{\"event\":\"progress\",\"frame\":8}\n{\"record\":\"finalization\"}\n",
+    );
+    let (mut runtime, mut run, tx) = runtime_run(&fixture);
+    let now = Arc::new(Mutex::new(Instant::now()));
+    let clock = now.clone();
+    run.clock.now = Box::new(move || *clock.lock().unwrap());
+    let advance = |millis| {
+        *now.lock().unwrap() += Duration::from_millis(millis);
+    };
+    run.snapshot.speed = dmd_protocol::Speed::Numeric(1.0);
+    run.clock.begin();
+    // Production lookahead completion accounts time before constructing its budget.
+    run.lookahead
+        .request(run.output.temporary().unwrap())
+        .unwrap();
+    advance(250);
+    let unit = runtime.lookahead(&mut run).unwrap().unwrap();
+    let Ending::Boundary { from, to } = unit.ending else {
+        panic!()
+    };
+    let mut budget = Budget::new(from, to, run.rate);
+    budget.credit(run.clock.take());
+    assert_eq!(runtime.pending(&mut run, &mut budget).unwrap(), None);
+    advance(250);
+    tx.send(Ok(Some(Command::Pause))).unwrap();
+    assert_eq!(runtime.pending(&mut run, &mut budget).unwrap(), None);
+    advance(100_000);
+    tx.send(Ok(Some(Command::SetSpeed(dmd_protocol::Speed::Numeric(
+        2.0,
+    )))))
+    .unwrap();
+    tx.send(Ok(Some(Command::Resume))).unwrap();
+    assert_eq!(runtime.pending(&mut run, &mut budget).unwrap(), None);
+    advance(249);
+    assert_eq!(runtime.pending(&mut run, &mut budget).unwrap(), None);
+    advance(2);
+    assert!(runtime.wait(&mut run, budget).unwrap());
+    run.clock.active = false;
+    runtime.submit(&mut run, &unit).unwrap();
+    assert_eq!(runtime.frame, 4);
+    // Changing speed halfway accounts the elapsed interval at the old speed.
+    run.snapshot.speed = dmd_protocol::Speed::Numeric(1.0);
+    run.clock.begin();
+    let mut budget = Budget::new(4, 8, run.rate);
+    advance(500);
+    tx.send(Ok(Some(Command::SetSpeed(dmd_protocol::Speed::Numeric(
+        2.0,
+    )))))
+    .unwrap();
+    assert_eq!(runtime.pending(&mut run, &mut budget).unwrap(), None);
+    advance(249);
+    assert_eq!(runtime.pending(&mut run, &mut budget).unwrap(), None);
+    advance(2);
+    assert!(runtime.wait(&mut run, budget).unwrap());
+    check_repeated_max_and_stop(&mut runtime, &mut run, &tx);
+    runtime.complete(&mut run, Ok(())).unwrap();
+    let events: Vec<Value> = runtime
+        .writer
+        .into_inner()
+        .split(|b| *b == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap())
+        .collect();
+    assert_eq!(
+        events.iter().filter(|e| e["event"] == "progress").count(),
+        1
+    );
+    assert_eq!(
+        events.last().unwrap(),
+        &json!({"event":"finished","reason":"stopped","frame":4})
+    );
+}
+
+fn check_repeated_max_and_stop(
+    runtime: &mut Runtime<Vec<u8>>,
+    run: &mut Run,
+    tx: &SyncSender<Input>,
+) {
+    // A repeated frontier costs no source time, but pause still prevents submission.
+    run.clock.begin();
+    tx.send(Ok(Some(Command::Pause))).unwrap();
+    let mut repeated = Budget::new(4, 4, run.rate);
+    assert_eq!(runtime.pending(run, &mut repeated).unwrap(), None);
+    tx.send(Ok(Some(Command::Resume))).unwrap();
+    assert!(runtime.wait(run, repeated).unwrap());
+    // A transient max clears a pending budget even within one FIFO batch.
+    run.clock.begin();
+    tx.send(Ok(Some(Command::SetSpeed(dmd_protocol::Speed::Max))))
+        .unwrap();
+    tx.send(Ok(Some(Command::SetSpeed(dmd_protocol::Speed::Numeric(
+        1.0,
+    )))))
+    .unwrap();
+    let budget = Budget::new(4, 8, run.rate);
+    assert!(runtime.wait(run, budget).unwrap());
+    // Stop wins over a ready budget; no second progress is submitted.
+    tx.send(Ok(Some(Command::Stop))).unwrap();
+    let budget = Budget::new(4, 4, run.rate);
+    assert!(!runtime.wait(run, budget).unwrap());
+}
+
+#[test]
+fn retained_hash_outcomes_are_ordered_once_before_unchanged_terminal() {
+    for mode in ["match", "mismatch", "read", "modified", "cancel"] {
+        for stop in [false, true] {
+            hash_case(mode, stop);
+        }
+    }
+}
+fn hash_case(mode: &'static str, stop: bool) {
+    let fixture = Fixture::new(
+        "{\"event\":\"progress\",\"frame\":4}\n{\"event\":\"progress\",\"frame\":8}\n{\"record\":\"finalization\"}\n",
+    );
+    let (mut runtime, mut run, tx) = runtime_run(&fixture);
+    run.hashing = Some(start_hash_case(&fixture, &run, mode));
+    if mode != "cancel" {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !run.hashing.as_ref().unwrap().completed() {
+            assert!(Instant::now() < deadline);
+            thread::yield_now();
+        }
+    }
+    if stop {
+        // Submit one actual unit before stopping at its closing frontier.
+        run.lookahead
+            .request(run.output.temporary().unwrap())
+            .unwrap();
+        let unit = runtime.lookahead(&mut run).unwrap().unwrap();
+        runtime.submit(&mut run, &unit).unwrap();
+        tx.send(Ok(Some(Command::Stop))).unwrap();
+    }
+    runtime.play(&mut run).unwrap();
+    runtime.complete(&mut run, Ok(())).unwrap();
+    assert!(run.hashing.as_mut().unwrap().finish().is_none());
+    assert!(run.hashing.as_ref().unwrap().completed());
+    let events: Vec<Value> = runtime
+        .writer
+        .into_inner()
+        .split(|b| *b == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap())
+        .collect();
+    let frame = if stop { 4 } else { 8 };
+    assert_eq!(
+        events.last().unwrap(),
+        &json!({"event":"finished","reason":if stop { "stopped" } else { "end" },"frame":frame})
+    );
+    let warnings: Vec<_> = events
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e["level"] == "warning")
+        .collect();
+    assert_eq!(warnings.len(), usize::from(mode != "match"), "{mode}");
+    if let Some((index, warning)) = warnings.first() {
+        assert_eq!(*index, events.len() - 2);
+        assert_eq!(warning["frame"], frame);
+        let text = warning["text"].as_str().unwrap();
+        assert!(
+            text.contains(match mode {
+                "mismatch" => "differs",
+                "read" => "injected retained read failure",
+                "modified" => "changed",
+                "cancel" => "cancelled",
+                _ => unreachable!(),
+            }),
+            "{text}"
+        );
+    }
+}
+
+fn start_hash_case(fixture: &Fixture, run: &Run, mode: &'static str) -> Hashing {
+    use crate::hashing::VerificationPoint;
+    use std::sync::atomic::AtomicBool;
+    let retained = fixture.0.join("retained.wav");
+    std::fs::rename(fixture.0.join("example.wav"), &retained).unwrap();
+    std::fs::write(fixture.0.join("example.wav"), b"replacement").unwrap();
+    let expected = if mode == "mismatch" {
+        "0".repeat(64)
+    } else {
+        run.expected.clone()
+    };
+    let (began, started) = mpsc::sync_channel(1);
+    let mut reads = 0;
+    let hashing = Hashing::start_with(
+        run.source.clone(),
+        expected,
+        move |point, flag: &AtomicBool| {
+            match point {
+                VerificationPoint::Read => {
+                    reads += 1;
+                    if reads == 1 {
+                        began.send(()).unwrap();
+                    }
+                    if mode == "read" && reads == 2 {
+                        anyhow::bail!("injected retained read failure");
+                    }
+                    if mode == "cancel" {
+                        while !flag.load(Ordering::Relaxed) {
+                            thread::yield_now();
+                        }
+                    }
+                }
+                VerificationPoint::Digested if mode == "modified" => {
+                    std::fs::OpenOptions::new()
+                        .write(true)
+                        .open(&retained)?
+                        .set_len(61)?;
+                }
+                VerificationPoint::Digested => {}
+            }
+            Ok(())
+        },
+    );
+    started.recv_timeout(Duration::from_secs(5)).unwrap();
+    hashing
+}
+
+#[path = "cancellation_tests.rs"]
+mod cancellation;

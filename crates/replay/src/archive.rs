@@ -320,13 +320,31 @@ impl Asset {
         if output.is_empty() {
             return Ok(0);
         }
-        let result = self.read_next(output);
+        self.read_chunk_cancellable(output, None)
+    }
+    pub(crate) fn read_chunk_cancellable(
+        &mut self,
+        output: &mut [u8],
+        cancellation: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<usize, Error> {
+        if self.failed {
+            return Err(Error::Integrity("reader ended after failure"));
+        }
+        let result = self.read_next(output, cancellation);
         if result.is_err() {
             self.failed = true;
         }
         result
     }
-    fn read_next(&mut self, output: &mut [u8]) -> Result<usize, Error> {
+    fn read_next(
+        &mut self,
+        output: &mut [u8],
+        cancellation: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<usize, Error> {
+        check_cancelled(cancellation)?;
+        if output.is_empty() {
+            return Ok(0);
+        }
         if self.verified {
             return Ok(0);
         }
@@ -334,7 +352,7 @@ impl Asset {
         let n = if self.decoder.is_none() {
             self.range.read(&mut output[..capacity])?
         } else {
-            self.inflate(&mut output[..capacity])?
+            self.inflate(&mut output[..capacity], cancellation)?
         };
         self.decoded = self
             .decoded
@@ -353,15 +371,21 @@ impl Asset {
         }
         Ok(n)
     }
-    fn inflate(&mut self, output: &mut [u8]) -> Result<usize, Error> {
+    fn inflate(
+        &mut self,
+        output: &mut [u8],
+        cancellation: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<usize, Error> {
         if self.ended {
             return Ok(0);
         }
         loop {
+            check_cancelled(cancellation)?;
             if self.begin == self.end {
                 self.end = self.range.read(&mut self.input)?;
                 self.begin = 0;
             }
+            check_cancelled(cancellation)?;
             let decoder = self
                 .decoder
                 .as_mut()
@@ -392,6 +416,13 @@ impl Asset {
             }
         }
     }
+}
+
+fn check_cancelled(flag: Option<&std::sync::atomic::AtomicBool>) -> Result<(), Error> {
+    if flag.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed)) {
+        return Err(Error::Cancelled);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
