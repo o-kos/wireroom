@@ -173,20 +173,6 @@ mod tests {
         assert!(outcome(Err(Box::new("panic")), "").is_some());
     }
     #[test]
-    fn changed_retained_metadata_cannot_certify_digest() {
-        let path = std::env::temp_dir().join(format!("dmd-hash-metadata-{}", std::process::id()));
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .unwrap();
-        let before = file.metadata().unwrap();
-        file.set_len(7).unwrap();
-        assert!(!stable(&before, &file.metadata().unwrap()).unwrap());
-        std::fs::remove_file(path).unwrap();
-    }
-    #[test]
     fn read_errors_are_diagnostics_and_workers_join_once() {
         struct Broken;
         impl Read for Broken {

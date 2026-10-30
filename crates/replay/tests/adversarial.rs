@@ -440,14 +440,6 @@ fn fake_eocd_inside_a_valid_comment_is_not_the_directory() {
 }
 
 #[test]
-fn stored_archive_bytes_can_be_supplied_without_a_path() {
-    let bytes = Zip::standard(Vec::new()).bytes;
-    let recording = Recording::from_reader(Cursor::new(bytes), 8).unwrap();
-    let mut journal = recording.journal().unwrap();
-    while journal.next_record().unwrap().is_some() {}
-}
-
-#[test]
 fn zip64_entries_and_both_descriptor_widths_with_or_without_signatures() {
     for zip64 in [false, true] {
         for signature in [None, Some(false), Some(true)] {
@@ -489,21 +481,6 @@ fn invalid_descriptors_and_zip64_locator_are_rejected() {
     let locator = zip.bytes.len() - 42;
     zip.u32(locator + 16, 2);
     assert!(Fixture::new(&zip.bytes).open().is_err());
-}
-
-#[test]
-fn zip64_empty_descriptor_cannot_hide_a_corrupt_wide_size() {
-    for signed in [false, true] {
-        let mut member = Member::stored("payloads/a", b"");
-        member.zip64 = true;
-        member.descriptor_signature = Some(signed);
-        member.flags |= 8;
-        let descriptor_start = member.header().len();
-        let mut zip = Zip::standard(vec![member]);
-        let decoded_offset = zip.local[2] + descriptor_start + if signed { 16 } else { 12 };
-        zip.u32(decoded_offset, 1);
-        asset_fails(&zip, "a", 0);
-    }
 }
 
 #[test]

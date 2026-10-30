@@ -34,7 +34,7 @@ reversible removal. Optional audit trims are deferred to keep scope concrete.
 
 ## Implementation steps
 
-- [ ] Remove the six duplicates and simplify the source metadata fixture; remove unused dev-dependencies and update the lockfile.
+- [x] Remove the six duplicates and simplify the source metadata fixture; remove unused dev-dependencies and update the lockfile.
 - [ ] Record exact reduction, counts, warm workspace/CLI timings and coverage limits; pass the full pinned gate and release build.
 - [ ] Push through the installed hook and update Draft PR #27 with cleanup and pending independent reviews.
 - [ ] Complete independent mechanical and intent reviews, then move this plan to `completed/` under the final review workflow.

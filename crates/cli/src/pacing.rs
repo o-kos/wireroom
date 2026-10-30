@@ -45,43 +45,6 @@ mod tests {
         budget.credit(source_time(elapsed, &snapshot));
     }
     #[test]
-    fn remaining_time_survives_pause_and_speed_change() {
-        let mut budget = Budget::new(
-            4,
-            8,
-            Rate {
-                numerator: 4,
-                denominator: 1,
-            },
-        );
-        consume(
-            &mut budget,
-            Duration::from_millis(500),
-            Speed::Numeric(1.0),
-            true,
-        );
-        consume(
-            &mut budget,
-            Duration::from_secs(99),
-            Speed::Numeric(1.0),
-            false,
-        );
-        consume(
-            &mut budget,
-            Duration::from_millis(249),
-            Speed::Numeric(2.0),
-            true,
-        );
-        assert!(!budget.ready());
-        consume(
-            &mut budget,
-            Duration::from_millis(2),
-            Speed::Numeric(2.0),
-            true,
-        );
-        assert!(budget.ready());
-    }
-    #[test]
     fn exact_deltas_and_max() {
         let rate = Rate {
             numerator: 1,

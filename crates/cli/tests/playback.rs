@@ -492,24 +492,6 @@ fn incomplete_input_is_rejected_before_eof_stop() {
     assert_eq!(events[1]["reason"], "stopped");
     p.success();
 }
-#[test]
-fn published_file_is_available_when_descriptor_arrives() {
-    let f = Fixture::example();
-    let mut p = f.process();
-    p.send(f.start(false, json!("max")));
-    loop {
-        let event = p.next();
-        if event["binary"][0]["type"] == "file" {
-            assert_eq!(
-                fs::read(f.root.join("out/files/message.bin")).unwrap(),
-                b"TEST"
-            );
-            break;
-        }
-    }
-    assert_eq!(p.finish().last().unwrap()["reason"], "end");
-    p.success();
-}
 
 #[test]
 fn signal_and_archive_path_replacement_keeps_opened_identities() {

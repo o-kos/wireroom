@@ -209,9 +209,7 @@ name = "dmd-source"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "crc32fast",
  "dmd-protocol",
- "dmd-replay",
  "thiserror",
 ]
 
