@@ -4,26 +4,11 @@ Wireroom is an operator's console for demodulating recorded signals: tune to a s
 set processing parameters, run, and watch progress as a log and in separate panes for
 decoded text, bits, callsigns and the phase constellation.
 
-Wireroom is the product, and its interface binary will be `wr`. Between Wireroom and
-the demodulation libraries sits `dmd`, a command-line tool that gives Wireroom one
-uniform way to reach demodulation regardless of what is behind it. Wireroom starts
-`dmd` for a run and reads its events; it never loads a demodulation library itself and
-never links a signal core.
-
-`dmd` is also a complete tool in its own right, usable directly from a terminal for
-demodulating, inspecting modules and checking results.
-
-`dmd` resolves what is behind it from the contents of its search path:
-
-- **Native** performs real demodulation through a signal core and dynamically loaded
-  demodulation libraries. Its runtime integration is future work.
-- **Replay** reproduces prepared recordings of earlier runs. It is always available and
-  needs no native toolchain, so Wireroom can be developed, tested and demonstrated
-  without the demodulation stack present.
-
-Both paths share one command-line surface, one event protocol and one set of result
-files. Wireroom cannot tell them apart beyond the data they produce, which is what
-makes a recording a usable stand-in for a real run.
+Wireroom is the product; its interface binary will be `wr`. It launches a selected
+`dmd` executable and consumes the common run protocol. `dmd` is also a standalone
+command-line tool. Replay and core are separate implementations of that application.
+This repository develops only replay; it does not load a signal core or select
+processing implementations internally.
 
 ## Status
 
@@ -37,10 +22,12 @@ streams payloads with integrity checks. The read-only
 reports exact original-source frames and retains independent cursors over the
 opened signal identity.
 
-Runtime, playback controls and the Wireroom interface remain future work; the CLI
-commands still report that they are not implemented. The interface will use GPUI;
-its accepted window concept is in [`docs/ui`](docs/ui/README.md). See `docs/plans/`
-for the active work.
+`dmd run --message-format json` implements replay lifecycle, FIFO controls, pacing,
+asset publication and background diagnostic hashing. Its supported output
+configurations and resource limits are documented in the
+[CLI runtime guide](crates/cli/README.md). Other commands and the Wireroom interface
+remain future work. The interface will use GPUI; its accepted window concept is in
+[`docs/ui`](docs/ui/README.md). See `docs/plans/` for active work.
 
 ## Building
 
@@ -49,9 +36,10 @@ cargo build --locked
 cargo build -p dmd --no-default-features --locked
 ```
 
-The current workspace needs only Rust and its platform linker. Native processing has
-no Cargo feature or ABI contract yet; its integration boundary will be agreed when
-an actual implementation is available.
+The workspace needs only Rust and its platform linker. Replay output currently
+requires a supported Linux configuration; other platforms build the CLI and report
+an explicit setup error. An independently supplied core implementation can implement
+the same CLI and protocol contracts without sharing internal runtime interfaces.
 
 ## Contributing
 

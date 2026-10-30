@@ -2,7 +2,8 @@
 
 This document specifies run protocol **1.0** between `dmd` and Wireroom (`wr`).
 It is a public contract for independently supplied `dmd` implementations. One child
-process handles one run. The current CLI does not yet implement it.
+process handles one run. The replay CLI implements it with the supported configurations
+and budgets in [the runtime guide](https://github.com/o-kos/wireroom/blob/main/crates/cli/README.md).
 
 Transport, lifecycle, controls and the result envelope are defined here. Exact
 producer schemas for masks, ALE, result `params`, binary `body` and other producer
@@ -24,8 +25,9 @@ dmd run --message-format json
 
 The ordinary output mode is `human`; `json` enables this protocol. Run settings
 arrive in `start`, after version checking. Executable discovery and supplier-specific
-launch settings are outside scope. Failures must never silently change the backend;
-a native run must not silently ignore replay-only options.
+launch settings are outside scope. Failures must never silently select a different
+processing implementation. Independently supplied implementations must reject
+unsupported launch options.
 
 | Stream | Contents |
 | --- | --- |
@@ -358,7 +360,7 @@ waits for process exit; a terminal event is not an exit status.
 | Unknown command or a known command invalid in the current lifecycle state | Emit a nonfatal `error`, subject to terminal completion superseding unprocessed commands. |
 | Invalid live setting or rejected parameter patch | Emit a nonfatal `error`; retain all previous settings. |
 | Valid `start` cannot open the recording, select the module, apply settings or prepare output | Emit a fatal `error`, then `finished` with reason `error` and frame 0; exit nonzero. No `started`. |
-| Fatal processing, invalid-result, resource or output-file failure after `started` | Stop processing, emit a fatal `error` then `finished` with reason `error`, and exit nonzero. Do not switch backends. |
+| Fatal processing, invalid-result, resource or output-file failure after `started` | Stop processing, emit a fatal `error` then `finished` with reason `error`, and exit nonzero. Do not switch processing implementations. |
 | Failure during normal or stopped finalization | Emit a fatal `error`, finish with reason `error`, and exit nonzero. |
 | stdin EOF | Process complete preceding command lines in order, then treat EOF as stop. Before start, finish at frame 0 without opening a recording. During finalization, keep finalizing. |
 | Unterminated bytes before stdin EOF | Reject the incomplete last line with a nonfatal `error`, then apply EOF as stop. Never execute the truncated command. |

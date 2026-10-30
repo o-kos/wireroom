@@ -6,6 +6,10 @@ All notable user-visible changes are documented here, following Keep a Changelog
 
 ### Added
 
+- JSON replay execution with serial controls, source-time pacing, bounded lazy block
+  spooling, safe payload publication on supported Linux output configurations and
+  cancellable background SHA-256 diagnostics.
+
 - Read-only PCM WAVE source metadata library with exact frame counts, retained
   source identity and bounded header inspection.
 
@@ -16,6 +20,8 @@ All notable user-visible changes are documented here, following Keep a Changelog
   individual-message validation and bounded streaming NDJSON codecs.
 
 ### Changed
+
+- Remove the legacy `--backend` selector; replay is a separate `dmd` implementation.
 
 - The product is named Wireroom, its interface binary will be `wr`, and the `dmd`
   command-line tool keeps its name.

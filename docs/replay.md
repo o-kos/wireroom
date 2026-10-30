@@ -1,13 +1,14 @@
 # Replay recording contract
 
 This document specifies recording format **1.0**, for replay through
-[run protocol 1.0](protocol.md). It defines data and behavior, not an implemented
-reader or writer. One recording represents one normally completed run with fixed
+[run protocol 1.0](protocol.md). It defines data and behavior. The [runtime guide](https://github.com/o-kos/wireroom/blob/main/crates/cli/README.md)
+documents the implemented CLI, supported configurations and additional budgets. One recording represents one normally completed run with fixed
 results. Recordings of stopped or failed source runs are outside version 1.
 The recorded effective tuning and parameters are fixed throughout that source run;
 runs that changed them are outside version 1. Replay reads source metadata without
 a native signal core and never decodes again.
-`wr` still launches `dmd`; this contract does not change the native boundary.
+`wr` launches the selected `dmd` executable; replay and core are separate
+implementations of the application.
 
 The general result-directory layout, discovery, recording tools, C ABI and producer
 schemas are outside scope. Masks, module info, ALE, result `params`, binary `body`
@@ -20,7 +21,7 @@ The entry point is `start.recording`, a signal file. Append the literal suffix
 `.replay` to its complete pathname to find its companion ZIP: `signal.wav` uses
 `signal.wav.replay`, not `signal.replay` or `signal.wav.replay.zip`. Both files are
 required. Relative launch paths have the protocol's working-directory meaning.
-There is no fallback search or alternate backend on failure. The archive contains
+There is no fallback search or alternate processing implementation on failure. The archive contains
 all replay assets; it must not refer to another external file besides this signal.
 
 Read byte size, real/IQ format, channels, rational frame rate and total frames from
@@ -439,7 +440,7 @@ asset reads remain fatal even if an independent background hash also fails.
 | stdout failure | Stop work, stderr diagnostic if possible, nonzero exit; no promise of terminal delivery. |
 
 There is no repair, dropped result, rewritten unsafe path, inferred marker,
-reordered producer output or switch to native processing on any failure.
+reordered producer output or switch to another implementation on any failure.
 
 ## Complete illustrative recording and playback
 

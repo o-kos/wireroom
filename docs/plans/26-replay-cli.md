@@ -100,9 +100,10 @@ lifecycle phase.
 - [x] Implement safe output publication/reuse with explicit platform limits.
 - [x] Implement cancellable retained-identity SHA-256 diagnostics.
 - [x] Add deterministic runtime and real-process contract/error/safety tests.
-- [ ] Update active architecture/runtime documentation and CHANGELOG in English.
-- [ ] Complete the full validation gate and release build.
-- [ ] Leave the active plan and Draft PR ready for orchestrator review.
+- [x] Update active architecture/runtime documentation and CHANGELOG in English.
+- [x] Complete the full validation gate and release build.
+- [x] Leave the active plan ready for orchestrator review; defer Draft PR management
+      to the orchestrator.
 
 ## Validation
 
@@ -115,10 +116,30 @@ lifecycle phase.
 - [x] Cover digest match, mismatch, read/modification failure and cancellation.
 - [x] Verify pacing with deterministic elapsed-time tests, including pause and
       speed changes, max, repeated frontiers and large coordinates.
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (repository warning policy)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the gate passes
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (repository warning policy)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the gate passes
+
+## Implementation validation evidence
+
+The pinned Rust 1.97.1 toolchain passes formatting, all-target Clippy, the complete
+locked workspace test suite (129 passed including doctests, eight unchanged
+policy/hook tests ignored), then the locked release build. Forty tests exercise the
+CLI runtime and process surface. No lint suppressions or threshold changes were
+introduced. The normative example runs in a real process and publishes the exact
+TEST payload, retains producer values and completes with end at frame 8.
+
+Filesystem tests ran with the host ownership view because the sandbox maps trusted
+root-owned ancestors to an unmapped UID; rejection of that mapped view is deliberate.
+The run exercises Btrfs ancestry and tmpfs output, including mandatory inode-flag
+inspection on tmpfs. Other platform/filesystem configurations are not certified;
+unsupported configurations fail closed according to the runtime guide. Registry
+access was unavailable; cached registry dependencies resolved offline. Local Git
+writes required the authorized sandbox override. Neither restriction stopped local
+implementation. Owner AGENTS.md changes and integrated runtime updates remain
+unstaged; all other task changes are committed. Push, Draft PR state and independent
+reviews remain the orchestrator's responsibility. No reviews were spawned.
 
 ## Post-completion
 

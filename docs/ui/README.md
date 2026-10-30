@@ -26,7 +26,11 @@ settings in popovers anchored to their summaries.
 - **Log and constellation.** Below the results, the log with a filter takes the width;
   the constellation stays square, its side equal to the row height.
 - **Status bar.** Processing state, progress, position, achieved rate, sample format and
-  backend.
+  selected executable implementation.
+
+The mock-up’s legacy backend labels are illustrative. The accepted runtime architecture
+launches a selected `dmd` executable; replay and core are separate implementations,
+without a backend selector inside this application.
 
 ## Decisions
 
