@@ -4,25 +4,25 @@
 
 Wireroom is the product: an application for demodulating recorded signals and
 inspecting results. It starts `dmd` and consumes its events. `dmd` is also a complete
-command-line tool. Only the optional native layer reaches the signal core through the
-C ABI. Everything implementing that ABI is outside this repository's scope. The
-interface toolkit is GPUI, through GPUI Kit, following the component principles of
-[Argand](https://github.com/o-kos/argand). The interface crate builds the `wr` binary,
-while `dmd` keeps its name.
+command-line tool. Native processing is future work; its integration boundary will
+be agreed when an actual implementation is available. The interface toolkit is GPUI,
+through GPUI Kit, following the component principles of
+[Argand](https://github.com/o-kos/argand). The planned interface crate will build
+the `wr` binary, while `dmd` keeps its name.
 
 ## Workspace
 
-- `crates/protocol`: shared protocol boundary; currently only its version.
+- `crates/protocol`: shared event types and bounded NDJSON codecs.
+- `crates/replay`: read-only recording validation and payload streaming.
 - `crates/cli`: command-line surface and backend selection.
-- `crates/native`: safe resource ownership over the C ABI.
-- `crates/core-sys`: C header, matching raw declarations and static linking.
 - `assets/icons/`: colour and monochrome Wireroom icon sources, with optical variants
   for small sizes.
 - `docs/plans`: active plans; `docs/plans/completed`: finished plans.
 - `docs/ui`: the accepted window concept and its interactive mock-up.
 - `.github/scripts`: CI decision logic; `scripts`: local policy checks.
 
-The event protocol, recording format and result layout belong to later work.
+The event protocol and recording contract are specified in `docs/protocol.md` and
+`docs/replay.md`. Runtime execution and playback controls remain future work.
 
 ## Commands
 
@@ -34,33 +34,29 @@ cargo run -p dmd -- --help
 cargo run -p dmd -- --backend replay list
 cargo fmt --all -- --check
 cargo clippy --all-targets --locked
-# Native Clippy with an empty core directory: see CONTRIBUTING.md for exact commands.
 cargo test --locked
-cargo test -p dmd-native --locked
 cargo build --release --locked
 cargo build -p dmd --no-default-features
-cargo build -p dmd --features native
 ```
 
-The CLI currently reports that each command is not implemented. Native builds require
-`DMD_CORE_LIB_DIR`; `DMD_CORE_LIB_NAME` defaults to `dmd_core`, and
-`DMD_CORE_EXTRA_LIBS` optionally lists additional link targets separated by semicolons.
+The CLI currently reports that each command is not implemented. There is no native
+Cargo feature or signal-core integration in the current workspace.
 
 ## Architectural invariants
 
-- `native` is not a default feature. Optional dependencies isolate default builds;
-  the core linking script is inert without its own `native` feature, even when selected
-  explicitly or through `--workspace`.
-- Replay-only builds and tests require no Python, CMake or C++ toolchain.
+- Current workspace builds and tests require no Python, CMake, C++ toolchain or signal
+  core. Future native integration must keep replay-only builds Rust-only.
 - There is no silent fallback. A core that fails to load or a corrupt recording is an
   error, never a quiet switch to the other backend.
 - Sample positions are frames of the source file. For IQ, one frame is an I/Q pair.
 - Paths from recordings and result identifiers stay inside the output directory.
   Never delete an arbitrary directory recursively.
-- No STL types or C++ exceptions cross the C ABI. Memory is released by its allocator's
-  side, and Rust RAII closes resources. Panics must not unwind across FFI boundaries.
-- Replay-only options are never silently ignored during a native run.
-- Event protocol, recording format and C ABI versions are independent.
+- Any future C ABI must keep STL types and C++ exceptions behind the boundary. Memory
+  must be released by its allocator's side, with Rust RAII closing resources. Panics
+  must not unwind across FFI boundaries.
+- Future native execution must never silently ignore replay-only options.
+- Event protocol and recording format versions are independent; any future C ABI
+  must have its own version.
 - Use `thiserror` in libraries and `anyhow` in binaries. Non-test code must not
   `unwrap` or `expect` on external data.
 - Every lint suppression, including a relaxed threshold, requires project-owner

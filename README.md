@@ -16,7 +16,7 @@ demodulating, inspecting modules and checking results.
 `dmd` resolves what is behind it from the contents of its search path:
 
 - **Native** performs real demodulation through a signal core and dynamically loaded
-  demodulation libraries. It is enabled by the `native` Cargo feature.
+  demodulation libraries. Its runtime integration is future work.
 - **Replay** reproduces prepared recordings of earlier runs. It is always available and
   needs no native toolchain, so Wireroom can be developed, tested and demonstrated
   without the demodulation stack present.
@@ -42,15 +42,13 @@ for the active work.
 ## Building
 
 ```sh
-# Command-line tool with replay only: no C++ toolchain required
-cargo build -p dmd --no-default-features
-
-# Full build, including native demodulation
-cargo build -p dmd --features native
+cargo build --locked
+cargo build -p dmd --no-default-features --locked
 ```
 
-The full build links a prebuilt signal core; see `CONTRIBUTING.md` for the environment
-variables that locate it.
+The current workspace needs only Rust and its platform linker. Native processing has
+no Cargo feature or ABI contract yet; its integration boundary will be agreed when
+an actual implementation is available.
 
 ## Contributing
 

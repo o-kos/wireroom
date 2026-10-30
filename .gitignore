@@ -7,10 +7,6 @@
 *.so
 *.dylib
 
-# Static libraries supplied to the native build from outside the repository
-*.a
-*.lib
-
 # Temporary files and directories
 ~*
 _*

@@ -131,20 +131,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "dmd-native",
  "dmd-protocol",
-]
-
-[[package]]
-name = "dmd-core-sys"
-version = "0.1.0"
-
-[[package]]
-name = "dmd-native"
-version = "0.1.0"
-dependencies = [
- "dmd-core-sys",
- "thiserror",
 ]
 
 [[package]]

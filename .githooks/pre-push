@@ -37,12 +37,7 @@ done < "$updates"
 
 cargo fmt --all -- --check || fail "formatting failed; run cargo fmt --all"
 cargo clippy --all-targets --locked || fail "Clippy failed; resolve the diagnostics"
-mkdir -p target
-native_lib_dir=$(mktemp -d "$root/target/native-clippy.XXXXXX") || fail "cannot create native lint directory"
-DMD_CORE_LIB_DIR="$native_lib_dir" cargo clippy -p dmd --features native --all-targets --locked || fail "native Clippy failed; resolve the diagnostics"
-rmdir "$native_lib_dir"
 cargo test --locked || fail "tests failed; resolve the failures"
-cargo test -p dmd-native --locked || fail "core-independent native tests failed; resolve the failures"
 
 mkdir -p target/policy
 policy_hash=$(git hash-object scripts/content_policy.rs) || fail "cannot hash the content policy"

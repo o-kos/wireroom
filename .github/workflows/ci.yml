@@ -23,13 +23,6 @@ jobs:
         run: rustup show active-toolchain
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --locked
-      - name: Type-check and lint native code without a core
-        shell: bash
-        run: |
-          mkdir -p target
-          native_lib_dir=$(mktemp -d "$PWD/target/native-clippy.XXXXXX")
-          DMD_CORE_LIB_DIR="$native_lib_dir" cargo clippy -p dmd --features native --all-targets --locked
-          rmdir "$native_lib_dir"
       - name: Test the policy when its sources change
         shell: bash
         env:
@@ -52,7 +45,7 @@ jobs:
           if test -n "$changed"; then
             cargo test -p dmd-protocol --test policy --locked -- --ignored
           fi
-      - run: cargo test -p dmd-native --locked
+      - run: cargo test --locked
 
   full:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
@@ -70,13 +63,6 @@ jobs:
         run: rustup show active-toolchain
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --locked
-      - name: Type-check and lint native code without a core
-        shell: bash
-        run: |
-          mkdir -p target
-          native_lib_dir=$(mktemp -d "$PWD/target/native-clippy.XXXXXX")
-          DMD_CORE_LIB_DIR="$native_lib_dir" cargo clippy -p dmd --features native --all-targets --locked
-          rmdir "$native_lib_dir"
       - run: cargo test --locked
       - name: Test the policy when its sources change
         shell: bash
@@ -100,7 +86,6 @@ jobs:
           if test -n "$changed"; then
             cargo test -p dmd-protocol --test policy --locked -- --ignored
           fi
-      - run: cargo test -p dmd-native --locked
       - run: cargo build --release --locked
       - run: cargo build -p dmd --no-default-features --locked
 
