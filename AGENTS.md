@@ -14,6 +14,7 @@ the `wr` binary, while `dmd` keeps its name.
 
 - `crates/protocol`: shared event types and bounded NDJSON codecs.
 - `crates/replay`: read-only recording validation and payload streaming.
+- `crates/source`: read-only source metadata and retained file access.
 - `crates/cli`: command-line surface and backend selection.
 - `assets/icons/`: colour and monochrome Wireroom icon sources, with optical variants
   for small sizes.
