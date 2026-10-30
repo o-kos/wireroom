@@ -53,8 +53,8 @@ The owner explicitly requested reuse of Argand's file-reading code.
 - [x] Document the public API, support matrix, obligations and provenance.
 - [x] Complete the local gate and release build without lint suppressions.
 - [x] Complete mechanical review and resolve substantive findings.
-- [ ] Complete intent review against acceptance criteria and invariants.
-- [ ] Move the plan to `docs/plans/completed/` before final owner review.
+- [x] Complete intent review against acceptance criteria and invariants.
+- [x] Move the plan to `docs/plans/completed/` before final owner review.
 
 ## Criterion-to-evidence map
 
@@ -89,7 +89,7 @@ change was needed. The full gate and release build passed after renaming the
 source example to `inspect_source` to avoid the replay example's output name.
 The executable example was run successfully against the exact documented source.
 Other operating systems remain for CI; the pathname-replacement assertion is
-Unix-only. No mechanical or intent reviewer was invoked in this implementation.
+Unix-only. Independent reviews followed this initial implementation gate.
 
 ## Review and final status
 
@@ -101,8 +101,16 @@ preservation of the narrower Issue semantics. No substantive finding was raised,
 accepted or declined; no correction round was needed. Windows execution remains
 for CI.
 
-Intent review is pending. Keep the Pull Request Draft for final owner review
-as requested. Ready status, successful required `ci/full` on an
+Intent review was clean across all eight acceptance criteria, the owner's Argand
+reuse requirement, every architectural invariant, scope, evidence, limitations
+and lifecycle. No substantive finding was raised, accepted or declined; no
+correction round was needed. Mechanical round 1 and intent review are both clean.
+
+The completed plan is moved to `docs/plans/completed/` before final owner review.
+After the move, the full local gate and release rebuild passed again on Linux.
+The final diff matches the plan and preserves the architectural invariants.
+Keep the Pull Request Draft for final owner review as requested.
+Ready status, successful required `ci/full` on an
 up-to-date branch and squash merge require the later owner-approved completion.
 
 ## Post-completion
