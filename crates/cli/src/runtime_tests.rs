@@ -28,7 +28,8 @@ impl Fixture {
                 .unwrap()
                 .join("docs/replay.md"),
         )
-        .unwrap();
+        .unwrap()
+        .replace("\r\n", "\n");
         let hex = spec
             .split("```text\n")
             .nth(1)

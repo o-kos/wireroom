@@ -63,3 +63,27 @@ Local validation passed on pinned Rust 1.97.1 using locked offline dependencies,
 including the full gate and subsequent release build. Only
 `x86_64-unknown-linux-gnu` was installed and exercised. Independent reviews remain
 pending; this plan stays active and the Pull Request stays Draft.
+
+## Simplification review round 1 correction
+
+- [x] Accept P2: CRLF specification checkouts break LF-only Markdown fence
+      delimiters in runtime and playback fixtures; remote Windows CI independently
+      confirmed the failure before runtime behavior could execute. Other review
+      categories were clean, and no findings were declined.
+- [x] Normalize CRLF before parsing in the runtime fixture and all three playback
+      readers: fixture metadata, example journal and normative exchange. Keep
+      production behavior and public contracts unchanged.
+- [x] Exercise the actual fixture parsers with a temporarily CRLF-converted
+      `docs/replay.md`: `cargo test -p dmd --locked --offline` passed all 48 tests,
+      including the normative exchange; a `finally` restoration restored the
+      original specification bytes and verified byte-for-byte equality.
+
+A brief inspection of path operations and platform gates found no obvious additional
+blocker in the newly reachable suites; Unix symlink tests and Linux packet-pipe tests
+retain their platform guards. Windows/macOS/Linux CI will be rerun independently.
+Round 2 mechanical and intent review remain reserved for the orchestrator; this
+correction does not mark either review clean or complete.
+
+After the correction, the pinned formatting check, all-target locked offline Clippy,
+locked offline workspace tests and subsequent locked offline release build all
+passed on Linux. The installed pre-push hook remains enabled without bypass.

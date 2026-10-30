@@ -51,7 +51,8 @@ impl Fixture {
                 .unwrap()
                 .join("docs/replay.md"),
         )
-        .unwrap();
+        .unwrap()
+        .replace("\r\n", "\n");
         let section = spec.split("`example.wav.replay`").nth(1).unwrap();
         let meta = section
             .split("```json\n")
@@ -75,7 +76,8 @@ impl Fixture {
                 .unwrap()
                 .join("docs/replay.md"),
         )
-        .unwrap();
+        .unwrap()
+        .replace("\r\n", "\n");
         let section = spec.split("`example.wav.replay`").nth(1).unwrap();
         let journal = section
             .split("```json\n")
@@ -190,7 +192,8 @@ fn example_json_blocks() -> Vec<Vec<Value>> {
             .unwrap()
             .join("docs/replay.md"),
     )
-    .unwrap();
+    .unwrap()
+    .replace("\r\n", "\n");
     let example = spec
         .split("Launch `dmd run --message-format json`")
         .nth(1)
