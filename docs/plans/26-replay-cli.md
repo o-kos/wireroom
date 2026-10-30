@@ -53,7 +53,8 @@ The source and archive libraries remain read-only boundaries.
 
 ### Implemented configuration and runtime decisions
 
-- Require Linux output on ext-family, Btrfs or tmpfs, with non-casefold inode flags,
+- Require Linux output on ext-family, Btrfs or tmpfs, with non-casefold inode flags
+  checked on every directory, including tmpfs (which supports casefolding),
   statx mount identities, anonymous O_TMPFILE spooling and exclusive renameat2
   publication. Reject overlay/network/FUSE and unknown ownership mappings. Output
   paths cannot contain parent components. All ancestry is root/caller owned and

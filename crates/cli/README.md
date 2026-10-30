@@ -58,8 +58,10 @@ snapshot: callers must keep source/archive contents stable throughout use.
 Output is deliberately restricted to Linux. Every ancestor, starting at the actual
 filesystem root, is opened without following symbolic links. Only ext-family,
 Btrfs and tmpfs filesystems are accepted; overlay, network, FUSE and other filesystems
-are rejected conservatively. Non-tmpfs directories must expose inode flags and
-must not have the casefold flag. This excludes case/Unicode folding configurations
+are rejected conservatively. Every directory must expose inode flags and must not have the casefold flag.
+This includes tmpfs, which also supports per-directory casefolding
+(as documented by the Linux kernel).
+Kernels without the required tmpfs flag ioctl are rejected. This excludes case/Unicode folding configurations
 rather than attempting to emulate their filename equivalence. Non-Linux systems
 and namespaces exposing unmapped ancestor owners fail setup. Output paths containing parent components are rejected without rewriting.
 Kernel/filesystem

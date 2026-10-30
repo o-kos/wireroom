@@ -71,15 +71,13 @@ fn protected(dir: &File, sticky_allowed: bool) -> anyhow::Result<()> {
         matches!(kind, 0xef53 | 0x01021994 | 0x9123683e),
         "Output requires a supported local Linux filesystem"
     );
-    if kind != 0x01021994 {
-        let mut flags: libc::c_long = 0;
-        // SAFETY: the ioctl writes one long to valid storage for a live directory.
-        let result = unsafe { libc::ioctl(dir.as_raw_fd(), libc::FS_IOC_GETFLAGS, &mut flags) };
-        ensure!(
-            result == 0 && flags & 0x40000000 == 0,
-            "Cannot establish case-sensitive output names"
-        );
-    }
+    let mut flags: libc::c_long = 0;
+    // SAFETY: the ioctl writes one long to valid storage for a live directory.
+    let result = unsafe { libc::ioctl(dir.as_raw_fd(), libc::FS_IOC_GETFLAGS, &mut flags) };
+    ensure!(
+        result == 0 && flags & 0x40000000 == 0,
+        "Cannot establish case-sensitive output names"
+    );
     Ok(())
 }
 fn private(dir: &File) -> anyhow::Result<()> {
