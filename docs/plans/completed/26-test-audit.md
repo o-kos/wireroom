@@ -36,8 +36,8 @@ reversible removal. Optional audit trims are deferred to keep scope concrete.
 
 - [x] Remove the six duplicates and simplify the source metadata fixture; remove unused dev-dependencies and update the lockfile.
 - [x] Record exact reduction, counts, warm workspace/CLI timings and coverage limits; pass the full pinned gate and release build.
-- [x] Update Draft PR #27 with cleanup and pending independent reviews; prepare the hook-validated push.
-- [ ] Complete independent mechanical and intent reviews, then move this plan to `completed/` under the final review workflow.
+- [x] Update Draft PR #27 with cleanup evidence; prepare the hook-validated push.
+- [x] Complete independent mechanical and intent reviews, then move this plan to `completed/` under the final review workflow.
 
 ## Validation and handoff
 
@@ -46,7 +46,8 @@ Run `cargo fmt --all -- --check`, `cargo clippy --all-targets --locked`,
 may be used offline. Policy/hook tests are conditional on changes to their code,
 which are outside this cleanup. Measure a warm full test run and a subsequent
 CLI-only run without competing Cargo work; report observations, not benchmarks.
-Leave the PR Draft and this plan active for independent removal reviews.
+The final documentation tree passes the same gate and subsequent release build.
+Leave PR #27 Draft for owner review; Ready, merge and Issue closing are outside this handoff.
 
 ## Cleanup evidence
 
@@ -75,5 +76,22 @@ checks and the separate source-to-replay smoke; source metadata and actual compo
 process execution remain checked. This is not proof that every remaining test is
 necessary. Normative full-process exchange remains Linux-specific; output file-count
 and byte-accounting extreme boundaries still lack direct tests. Hash test hooks and
-any broader scope reduction are outside this change. Independent removal mechanical
-and intent reviews remain pending; keep this plan active and PR #27 Draft.
+any broader scope reduction are outside this change.
+
+## Review and final handoff
+
+Independent mechanical review round 1 was clean, with no substantive findings.
+It verified all six exact coverage mappings, the source composition scaffold and
+dev-dependency removal, production invariance, and the 5,830-to-5,637 line reduction
+with 4,021 production lines unchanged. The complete audit intent review was also
+clean: the whole-suite question was examined, meaningful existing requirements were
+preserved, and no numeric gaming, minimality or speedup claim was made. No findings
+were accepted or declined in the cleanup reviews; the audit recommendations were
+implemented, and no substantive issue remains outstanding.
+
+[Full CI](https://github.com/o-kos/wireroom/actions/runs/41118953500) succeeded on
+the code/test head preceding the final documentation-only handoff, including Linux,
+Windows and macOS tests, release and no-default-features builds, and the aggregate
+`ci/full` check. The final documentation-only commit does not rerun full CI; Draft
+quick CI runs automatically. The installed pre-push hook validates the push with
+cached dependencies offline and no bypass. PR #27 remains Draft for owner review.
