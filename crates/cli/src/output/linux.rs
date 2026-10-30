@@ -267,17 +267,18 @@ impl Stage {
             std::ffi::OsStr::from_bytes(name.as_bytes()),
             libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL,
         )?;
-        let unpublished = open_at(
-            &parent,
-            std::ffi::OsStr::from_bytes(name.as_bytes()),
-            libc::O_PATH,
-        )?;
-        Ok(Self {
+        let mut stage = Self {
             parent,
             name,
-            unpublished: Some(unpublished),
+            unpublished: None,
             file: Some(file),
-        })
+        };
+        stage.unpublished = Some(open_at(
+            &stage.parent,
+            std::ffi::OsStr::from_bytes(stage.name.as_bytes()),
+            libc::O_PATH,
+        )?);
+        Ok(stage)
     }
     fn publish(&mut self, target: &str) -> anyhow::Result<File> {
         let file = self.file.take().context("Closed staging file")?;
@@ -312,17 +313,27 @@ impl Stage {
 }
 impl Drop for Stage {
     fn drop(&mut self) {
-        let Some(owned) = &self.unpublished else {
+        let Some(owned) = self.unpublished.as_ref().or(self.file.as_ref()) else {
             return;
         };
-        let current = open_at(
-            &self.parent,
-            std::ffi::OsStr::from_bytes(self.name.as_bytes()),
-            libc::O_PATH,
-        );
-        let same = current
-            .and_then(|file| Ok((file.metadata()?, owned.metadata()?)))
-            .is_ok_and(|(a, b)| a.dev() == b.dev() && a.ino() == b.ino());
+        let mut current = std::mem::MaybeUninit::<libc::stat>::uninit();
+        // SAFETY: parent is live, name is NUL terminated and current is writable.
+        let result = unsafe {
+            libc::fstatat(
+                self.parent.as_raw_fd(),
+                self.name.as_ptr(),
+                current.as_mut_ptr(),
+                libc::AT_SYMLINK_NOFOLLOW,
+            )
+        };
+        if result != 0 {
+            return;
+        }
+        // SAFETY: successful fstatat initialized current without allocating a descriptor.
+        let current = unsafe { current.assume_init() };
+        let same = owned
+            .metadata()
+            .is_ok_and(|owned| current.st_dev == owned.dev() && current.st_ino == owned.ino());
         if !same {
             return;
         }
@@ -345,6 +356,89 @@ mod tests {
         assert!(!case_sensitive(flags));
         assert!(!case_sensitive(flags | 0x80));
         assert!(case_sensitive(0x80));
+    }
+    #[test]
+    fn stage_cleanup_under_fd_exhaustion_runs_in_isolated_process() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--ignored",
+                "--exact",
+                "output::linux::tests::stage_cleanup_under_fd_exhaustion_helper",
+                "--test-threads=1",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "isolated helper failed: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+    }
+    fn exhaust_descriptors() -> Vec<File> {
+        let mut files = Vec::new();
+        loop {
+            match File::open("/dev/null") {
+                Ok(file) => files.push(file),
+                Err(error) => {
+                    assert_eq!(error.raw_os_error(), Some(libc::EMFILE));
+                    return files;
+                }
+            }
+        }
+    }
+    #[test]
+    #[ignore = "runs only in a dedicated subprocess because FD limits are process-wide"]
+    fn stage_cleanup_under_fd_exhaustion_helper() {
+        let root = std::env::temp_dir().join(format!("dmd-stage-emfile-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let mut published = Stage::new(File::open(&root).unwrap()).unwrap();
+        let reused = root.join(std::ffi::OsStr::from_bytes(published.name.as_bytes()));
+        let retained = published.publish("result").unwrap();
+        std::fs::write(&reused, b"unrelated").unwrap();
+        let mut closed = Stage::new(File::open(&root).unwrap()).unwrap();
+        let closed_name = root.join(std::ffi::OsStr::from_bytes(closed.name.as_bytes()));
+        drop(closed.file.take());
+        let replaced = Stage::new(File::open(&root).unwrap()).unwrap();
+        let replaced_name = root.join(std::ffi::OsStr::from_bytes(replaced.name.as_bytes()));
+        std::fs::rename(&replaced_name, root.join("original")).unwrap();
+        std::fs::write(&replaced_name, b"replacement").unwrap();
+        let parent = File::open(&root).unwrap();
+        let next_name = root.join(format!(
+            ".dmd-{}-{}",
+            std::process::id(),
+            NEXT.load(Ordering::Relaxed)
+        ));
+        let mut limit = std::mem::MaybeUninit::<libc::rlimit>::uninit();
+        // SAFETY: limit points to writable storage for the process resource limit.
+        let result = unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, limit.as_mut_ptr()) };
+        assert_eq!(result, 0);
+        // SAFETY: successful getrlimit initialized limit.
+        let mut limit = unsafe { limit.assume_init() };
+        limit.rlim_cur = limit.rlim_cur.min(64);
+        // SAFETY: valid resource and initialized limit; this process runs only this helper.
+        assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &limit) }, 0);
+        let mut files = exhaust_descriptors();
+        drop(files.pop().unwrap());
+        let error = Stage::new(parent).err().expect("second open must fail");
+        assert!(
+            error
+                .to_string()
+                .contains(&std::io::Error::from_raw_os_error(libc::EMFILE).to_string())
+        );
+        assert!(!next_name.exists());
+        files.extend(exhaust_descriptors());
+        drop(closed);
+        drop(replaced);
+        drop(published);
+        assert!(!closed_name.exists());
+        drop(files);
+        assert_eq!(std::fs::read(&reused).unwrap(), b"unrelated");
+        assert_eq!(std::fs::read(&replaced_name).unwrap(), b"replacement");
+        assert_eq!(retained.metadata().unwrap().len(), 0);
+        assert_eq!(std::fs::read(root.join("result")).unwrap(), b"");
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn published_stage_never_cleans_reused_temporary_name() {

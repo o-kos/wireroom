@@ -141,12 +141,39 @@ cleanup correction is also in scope.
       reasons. Break stdout with active workers and verify cancellation and joins.
 - [x] Commit all owner architecture instructions and runtime documentation together.
 
+## Mechanical review round 2 correction
+
+One P2 finding was accepted; none were declined. Round 2 was not clean. All five
+round 1 findings were confirmed fixed. The final mechanical review remains pending
+with the orchestrator.
+
+- [x] Arm Stage cleanup immediately after exclusive creation using the original open
+      file; retain unpublished identity across explicit writer close, use no-follow
+      handle-relative fstatat without allocating a descriptor during cleanup, and
+      disarm only after successful publication.
+- [x] Add a dedicated subprocess regression with one free descriptor slot: exclusive
+      creation succeeds and the identity open fails with EMFILE. Verify owned-temp
+      removal, cleanup after writer close under exhaustion, and preservation of a
+      replaced temp, an unrelated file at a reused temp name and a published file.
+- [x] Pass the full gate and release build after the correction; retain Draft state
+      and update the correction evidence for the orchestrator's next review.
+
+The regression fails against the previous Stage implementation because the owned
+new temporary file remains, and passes with the correction. Only the helper lowers
+its process-wide descriptor limit and fills real descriptors; the parent test suite
+keeps its limits unchanged. Existing publication and replaced-temp tests also pass.
+No waits, lint suppressions, threshold changes or output-security restrictions were
+added or relaxed. The sandbox ownership mapping still requires the existing host
+ownership view for the full gate; the gate and subsequent release build pass there.
+
 ## Implementation validation evidence
 
 The pinned Rust 1.97.1 toolchain passes formatting, all-target Clippy and the full
-locked offline workspace suite: 138 passed including two doctests, with eight
-unchanged conditional policy/hook tests ignored. The CLI contributes 49 tests:
-23 unit/runtime, six command and 20 process tests. The locked offline release build
+locked offline workspace suite: 139 passed including two doctests, with nine
+tests ignored in the main run: eight unchanged conditional policy/hook tests and
+one private FD-exhaustion helper. The helper runs separately and passes inside the
+parent regression test. The CLI contributes 50 passing tests in the main run:
+24 unit/runtime, six command and 20 process tests. The locked offline release build
 passes after the complete gate.
 
 The process example compares all documented requests and complete event values at
