@@ -149,7 +149,7 @@ with the orchestrator.
 
 - [x] Arm Stage cleanup immediately after exclusive creation using the original open
       file; retain unpublished identity across explicit writer close, use no-follow
-      handle-relative fstatat without allocating a descriptor during cleanup, and
+      handle-relative statx without allocating a descriptor during cleanup, and
       disarm only after successful publication.
 - [x] Add a dedicated subprocess regression with one free descriptor slot: exclusive
       creation succeeds and the identity open fails with EMFILE. Verify owned-temp
@@ -165,6 +165,28 @@ keeps its limits unchanged. Existing publication and replaced-temp tests also pa
 No waits, lint suppressions, threshold changes or output-security restrictions were
 added or relaxed. The sandbox ownership mapping still requires the existing host
 ownership view for the full gate; the gate and subsequent release build pass there.
+
+### Cleanup portability correction before the final mechanical round
+
+- [x] Replace plain fstatat with the already-required statx identity API. Request
+      STATX_INO and require its returned mask bit before comparing the u64 inode;
+      map device major/minor through libc::makedev to retained metadata's device.
+      Preserve no-follow lookup, no descriptor allocation, original-handle evidence,
+      writer-close retention and publication disarming. Keep the EMFILE regression.
+- [x] Verify the API against cached libc 0.2.189 sources: linux_like/mod.rs exposes
+      statx for GNU and supported musl versions, with u64 inode and u32 device fields;
+      linux_l4re_shared.rs maps both device components into Linux's u64 dev_t.
+      GNU b32's default ino_t is c_ulong and build.rs defaults GNU time bits to 32,
+      so plain fstatat can both mismatch retained u64 inode types and overflow.
+- [x] Rerun formatting, all-target locked offline Clippy, the complete locked offline
+      test suite and then the locked offline release build with the host ownership
+      view. Results remain 139 passed plus the isolated helper; no tests were added.
+
+Only x86_64-unknown-linux-gnu is installed. A 32-bit cross-target build is NOT
+certified: cached API inspection does not replace compilation for that target.
+No lint suppressions, narrowing casts or dependency changes were introduced. The
+remaining mechanical and intent reviews stay with the orchestrator; none were run
+for this focused correction. Keep the PR in Draft.
 
 ## Implementation validation evidence
 

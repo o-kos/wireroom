@@ -316,24 +316,27 @@ impl Drop for Stage {
         let Some(owned) = self.unpublished.as_ref().or(self.file.as_ref()) else {
             return;
         };
-        let mut current = std::mem::MaybeUninit::<libc::stat>::uninit();
+        let mut current = std::mem::MaybeUninit::<libc::statx>::uninit();
         // SAFETY: parent is live, name is NUL terminated and current is writable.
         let result = unsafe {
-            libc::fstatat(
+            libc::statx(
                 self.parent.as_raw_fd(),
                 self.name.as_ptr(),
-                current.as_mut_ptr(),
                 libc::AT_SYMLINK_NOFOLLOW,
+                libc::STATX_INO,
+                current.as_mut_ptr(),
             )
         };
         if result != 0 {
             return;
         }
-        // SAFETY: successful fstatat initialized current without allocating a descriptor.
+        // SAFETY: successful statx initialized current without allocating a descriptor.
         let current = unsafe { current.assume_init() };
-        let same = owned
-            .metadata()
-            .is_ok_and(|owned| current.st_dev == owned.dev() && current.st_ino == owned.ino());
+        let same = current.stx_mask & libc::STATX_INO != 0
+            && owned.metadata().is_ok_and(|owned| {
+                libc::makedev(current.stx_dev_major, current.stx_dev_minor) == owned.dev()
+                    && current.stx_ino == owned.ino()
+            });
         if !same {
             return;
         }
