@@ -52,6 +52,8 @@ closing progress are provisional: later logs or the closing frontier can invalid
 the block. Callers needing complete blocks must spool or buffer them with their own
 explicit resource budget. Validation/lookahead does not submit source frames.
 Unknown kinds are validated and skipped; their apparent assets are never opened.
+`Journal::set_cancellation` installs a shared atomic flag checked between records
+and at buffer refills; cancellation returns `Error::Cancelled` and poisons the reader.
 
 Payload reads check exact unchanged paths, declared descriptor size, local headers,
 consumed range overlap, decompression, actual decoded size and CRC. Journal decoding
@@ -83,7 +85,8 @@ and its diagnostic outcome, runtime lifecycle/controls/pacing and protocol outpu
 The recorded digest is validated metadata, not authentication or certification of a
 matching signal or successful playback. Output containment, ancestry/race protection,
 exclusive creation, close-before-emission, reuse and published-file lifetime all
-belong to a later materializer. Lexical paths and verified bytes establish none of
+belong to the caller. The [CLI runtime](https://github.com/o-kos/wireroom/blob/main/crates/cli/README.md) implements that materializer
+with conservative Linux configuration restrictions. Lexical paths and verified bytes establish none of
 those filesystem guarantees. Target filesystem case/Unicode equivalence depends
 on the selected output root and remains a materializer check, including on macOS;
 archive matching itself always uses exact UTF-8 names. The reader rejects known

@@ -51,6 +51,38 @@ The source and archive libraries remain read-only boundaries.
 - Remove the legacy backend selector and stale native-integration descriptions.
   Preserve the owner's AGENTS.md changes while updating runtime status in place.
 
+### Implemented configuration and runtime decisions
+
+- Require Linux output on ext-family, Btrfs or tmpfs, with non-casefold inode flags,
+  statx mount identities, anonymous O_TMPFILE spooling and exclusive renameat2
+  publication. Reject overlay/network/FUSE and unknown ownership mappings. Output
+  paths cannot contain parent components. All ancestry is root/caller owned and
+  non-writable by other users, except root-owned sticky traversal ancestors.
+- Require the output root and every payload directory to be caller-owned and private
+  (no group/other access). This protects relocation and hard-link creation without
+  assuming a system-wide protected-hardlinks setting. Reject descendant mount-ID
+  changes, including bind mounts. Same-credential caller modification and privileged
+  administration follow the contract's caller/OS trust boundary; directory handles
+  alone are never treated as relocation protection.
+- Limit the single anonymous block spool to 256 MiB, materialized output to 64 GiB
+  and 65,536 files, and the input queue to one decoded command. Worker-side decoding
+  holds one additional bounded line. Check commands in bounded FIFO batches and at
+  5 ms polling intervals, subject to bounded parsing, scheduling and backpressure.
+- Credit source time consumed during lookahead and account at every control before
+  changing settings. A transient max request clears pending deliberate pacing even
+  if another numeric speed follows in the same FIFO batch. Markers validated by
+  lookahead become lifecycle transitions only when consumed by the runtime.
+- Add journal cancellation checked between records and 8 KiB refills, with a distinct
+  cancellation error. Join lookahead before terminal completion and retain any
+  already detected non-cancellation failure. Hashing starts after started; join it
+  after cancellation, compare retained-file metadata, and omit optional diagnostics
+  on fatal completion so fatal error directly precedes finished.
+- Use deterministic event-writer command injection for in-flight and finalization
+  tests, and injected elapsed durations for pacing. The real-process suite reads
+  the normative recording example from the contract instead of maintaining a copy.
+- Preserve all owner AGENTS.md edits and add runtime status updates in place. Leave
+  that entire file unstaged for the orchestrator to separate from the owner changes.
+
 ## Rejected alternatives
 
 Whole-journal buffering or eager extraction violates lazy validation and resource
@@ -62,25 +94,25 @@ lifecycle phase.
 
 ## Implementation steps
 
-- [ ] Implement launch surface, bounded transport and lifecycle/settings controls.
-- [ ] Implement bounded lookahead/spooling, remaining-time pacing and finalization.
-- [ ] Implement safe output publication/reuse with explicit platform limits.
-- [ ] Implement cancellable retained-identity SHA-256 diagnostics.
-- [ ] Add deterministic runtime and real-process contract/error/safety tests.
+- [x] Implement launch surface, bounded transport and lifecycle/settings controls.
+- [x] Implement bounded lookahead/spooling, remaining-time pacing and finalization.
+- [x] Implement safe output publication/reuse with explicit platform limits.
+- [x] Implement cancellable retained-identity SHA-256 diagnostics.
+- [x] Add deterministic runtime and real-process contract/error/safety tests.
 - [ ] Update active architecture/runtime documentation and CHANGELOG in English.
 - [ ] Complete the full validation gate and release build.
 - [ ] Leave the active plan and Draft PR ready for orchestrator review.
 
 ## Validation
 
-- [ ] Run the docs/replay.md example through a real process; verify exact producer
+- [x] Run the docs/replay.md example through a real process; verify exact producer
       values, file bytes, close-before-descriptor availability and exit/termination.
-- [ ] Cover normal end, empty/repeated boundaries, controls/FIFO, EOF and malformed
+- [x] Cover normal end, empty/repeated boundaries, controls/FIFO, EOF and malformed
       input, stop during wait/in-flight/finalization and virtual-frontier failures.
-- [ ] Cover lazy journal/assets failures, all-result validation, collision/reuse,
+- [x] Cover lazy journal/assets failures, all-result validation, collision/reuse,
       symlinks, aliases and relocation protection or explicit configuration rejection.
-- [ ] Cover digest match, mismatch, read/modification failure and cancellation.
-- [ ] Verify pacing with deterministic elapsed-time tests, including pause and
+- [x] Cover digest match, mismatch, read/modification failure and cancellation.
+- [x] Verify pacing with deterministic elapsed-time tests, including pause and
       speed changes, max, repeated frontiers and large coordinates.
 - [ ] `cargo fmt --all -- --check`
 - [ ] `cargo clippy --all-targets --locked` (repository warning policy)

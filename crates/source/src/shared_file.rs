@@ -16,6 +16,10 @@ pub struct SourceCursor {
 }
 
 impl SourceCursor {
+    /// Inspect the retained identity, including modification metadata for diagnostics.
+    pub fn file_metadata(&self) -> std::io::Result<std::fs::Metadata> {
+        self.file.metadata()
+    }
     pub(crate) fn new(file: Arc<File>) -> std::io::Result<Self> {
         let len = file.metadata()?.len();
         Ok(Self { file, pos: 0, len })

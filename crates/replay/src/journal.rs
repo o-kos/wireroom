@@ -27,6 +27,7 @@ pub struct Journal {
     complete: bool,
     failed: bool,
     references: BTreeMap<String, u64>,
+    cancellation: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 impl Journal {
     pub(crate) fn new(asset: Asset, frames: u64) -> Self {
@@ -43,6 +44,7 @@ impl Journal {
             complete: false,
             failed: false,
             references: BTreeMap::new(),
+            cancellation: None,
         }
     }
     /// Read the next meaningful record, skipping validated unknown kinds.
@@ -59,8 +61,24 @@ impl Journal {
         }
         result
     }
+    /// Install a caller-owned cancellation signal checked between records and reads.
+    /// Cancellation poisons this journal like other interrupted validation.
+    pub fn set_cancellation(&mut self, flag: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        self.cancellation = Some(flag);
+    }
+    fn check_cancelled(&self) -> Result<(), Error> {
+        if self
+            .cancellation
+            .as_ref()
+            .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+        {
+            return Err(Error::Cancelled);
+        }
+        Ok(())
+    }
     fn next(&mut self) -> Result<Option<Record>, Error> {
         loop {
+            self.check_cancelled()?;
             let Some(line) = self.line()? else {
                 if !self.finalization || self.pending {
                     return Err(Error::Sequence("missing marker or closing progress"));
@@ -168,6 +186,7 @@ impl Journal {
     }
     fn byte(&mut self) -> Result<Option<u8>, Error> {
         if self.begin == self.end {
+            self.check_cancelled()?;
             self.end = self.asset.read_chunk(&mut self.buffer)?;
             self.begin = 0;
         }

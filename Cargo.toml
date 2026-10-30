@@ -16,6 +16,7 @@ thiserror = "2.0"
 serde_json = "1.0"
 dmd-protocol = { path = "crates/protocol" }
 dmd-replay = { path = "crates/replay" }
+dmd-source = { path = "crates/source" }
 
 [workspace.lints.rust]
 # Deny warnings here so plain cargo clippy is as strict locally as in CI.

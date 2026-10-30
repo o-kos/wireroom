@@ -59,9 +59,10 @@ Excluded profiles have typed `Unsupported` reasons; budget exhaustion has a type
 An opened identity survives pathname replacement on supporting platforms, but does
 not freeze externally modified contents. Callers must ensure stability throughout
 inspection and subsequent use, and handle later I/O errors. Skipped bytes are not
-read-verified. This API neither hashes nor authenticates the source. A later worker
-must hash the retained identity under caller-owned stability rules and compare the
-recording digest as needed. No SourceStamp, digest or runtime integration is provided.
+read-verified. This API neither hashes nor authenticates the source.
+`SourceCursor::file_metadata()` inspects its retained identity for diagnostics.
+The CLI hashes that identity in a cancellable worker under caller-owned stability
+rules; see the [runtime guide](https://github.com/o-kos/wireroom/blob/main/crates/cli/README.md). No digest type is provided here.
 Pass `source.metadata().frames` to `dmd_replay::Recording::open` or `from_reader`;
 replay/protocol contracts and their independent versions remain unchanged.
 
