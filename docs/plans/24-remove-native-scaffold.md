@@ -44,7 +44,7 @@ require the scaffold's crates, feature and validation commands.
 - [x] Remove unused crates, feature wiring and stale lockfile packages.
 - [x] Update hook/CI validation, active documentation and plan template.
 - [x] Validate CLI behavior, Rust-only builds and all hook/policy tests.
-- [ ] Complete mechanical review and resolve substantive findings.
+- [x] Complete mechanical review and resolve substantive findings.
 - [ ] Complete intent review against the removal request and invariants.
 - [ ] Move this plan to `docs/plans/completed/` before final owner review.
 
@@ -86,8 +86,15 @@ orchestrator commits them. No commit, push or lifecycle action was performed.
 
 ## Review and final status
 
-Mechanical and intent reviews are pending. Keep the Pull Request Draft for final
-owner review. Ready status, successful required `ci/full` on an up-to-date branch
+Mechanical round 1 was clean across workflow/hook/CI coverage, workspace and
+dependency cleanup, architecture and CLI behavior, test gaps and portability,
+scope and documentation. No substantive findings were raised, accepted or
+declined; no correction round was needed. The actual implementation push also
+passed the complete pre-push hook, conditional hook/policy tests and both
+generic and configured local content policies without a bypass.
+
+Intent review is pending. Keep the Pull Request Draft for final owner review.
+Ready status, successful required `ci/full` on an up-to-date branch
 and squash merge remain pending explicit owner approval.
 
 ## Post-completion
