@@ -223,8 +223,10 @@ The workspace requires only Rust and the platform's ordinary Rust linker. It dev
 the replay implementation of `dmd`; a core implementation is a separate executable
 implementing the same CLI and run protocol. There is no native Cargo feature, C ABI,
 general backend interface or automatic implementation selection. `wr` launches the
-selected executable. See `crates/cli/README.md` for replay runtime behavior and the
-conservative output configuration policy.
+selected executable. Replay trusts caller-selected output and its ancestry to stay
+stable during the run; archive paths and payloads remain untrusted. Portable staging
+publishes without overwrite before descriptors. See `crates/cli/README.md` for runtime
+behavior and resource limits.
 
 ## 4. External review
 

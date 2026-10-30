@@ -60,7 +60,9 @@ remain unimplemented. There is no native Cargo feature or signal-core integratio
   switch processing implementations or fall back to real signal processing.
 - Sample positions are frames of the source file. For IQ, one frame is an I/Q pair.
 - Paths from recordings and result identifiers stay inside the output directory.
-  Never delete an arbitrary directory recursively.
+  Caller-selected output and its ancestry are trusted and stable during a run;
+  archive paths and payloads remain untrusted. Never delete an arbitrary directory
+  recursively.
 - Event protocol and recording format versions are independent. This repository
   does not define a signal-core ABI.
 - Use `thiserror` in libraries and `anyhow` in binaries. Non-test code must not

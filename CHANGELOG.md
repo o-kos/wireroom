@@ -7,7 +7,7 @@ All notable user-visible changes are documented here, following Keep a Changelog
 ### Added
 
 - JSON replay execution with serial controls, source-time pacing, bounded lazy block
-  spooling, safe payload publication on supported Linux output configurations and
+  spooling, portable no-overwrite payload publication under trusted stable output and
   cancellable background SHA-256 diagnostics.
 
 - Read-only PCM WAVE source metadata library with exact frame counts, retained

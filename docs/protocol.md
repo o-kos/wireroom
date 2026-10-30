@@ -321,19 +321,21 @@ component, `.` component or `..` component. It cannot denote a drive path, UNC p
 URL or an absolute path. Identifiers are never interpolated into paths without
 independent validation. These rules apply equally to replayed references.
 
-Lexical checks alone are insufficient: both writing and reading must keep the
-resolved file inside the output directory, including in the presence of symbolic
-links or equivalent filesystem indirections. An implementation must prevent a
-check/open race from escaping that directory, not merely check a string prefix.
-Reject an unsafe reference; never follow it or silently rewrite it to another file.
+The caller-selected output directory and its ancestry are trusted and stable
+throughout the run. Local processes moving directories or mutating output are
+outside this contract. Archive references remain untrusted: reject platform-invalid
+names and evident symlink or non-directory ancestors under output rather than
+following them. Ordinary filesystem checks suffice under this stability assumption.
+Reject unsafe references without rewriting them.
 
-Before emitting a descriptor, `dmd` finishes writing and closes the referenced
-regular file. Its byte length equals `size`. The file remains available and
-unchanged for the rest of the run and after process exit until the caller removes
-its output. A later result must not overwrite a file already referenced. This
-permits `wr` to open the payload as soon as the event arrives. An inability to
-write, close or safely reference it is a fatal run error. Neither participant may
-recursively delete an arbitrary directory in order to prepare or clean up output.
+Before emitting a result, `dmd` finishes writing and closes every referenced regular
+file. Each byte length equals `size`; publication at its exact path is exclusive
+and never overwrites an existing destination. A later result may reuse the same
+asset and size without rewriting. Published files remain available and unchanged
+through exit until the caller removes or modifies its output, so `wr` can open them
+as soon as the event arrives. Detected writing, validation or publication failures
+are fatal. Cleanup removes only invocation-owned unpublished temporary files;
+neither participant may recursively clear an arbitrary output directory.
 
 ### `error`
 

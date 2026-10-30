@@ -83,12 +83,11 @@ with `Error::Resource` before trusting unchecked declared sizes.
 Callers own signal opening/header decoding, original-frame context, digest computation
 and its diagnostic outcome, runtime lifecycle/controls/pacing and protocol output.
 The recorded digest is validated metadata, not authentication or certification of a
-matching signal or successful playback. Output containment, ancestry/race protection,
-exclusive creation, close-before-emission, reuse and published-file lifetime all
-belong to the caller. The [CLI runtime](https://github.com/o-kos/wireroom/blob/main/crates/cli/README.md) implements that materializer
-with conservative Linux configuration restrictions. Lexical paths and verified bytes establish none of
-those filesystem guarantees. Target filesystem case/Unicode equivalence depends
-on the selected output root and remains a materializer check, including on macOS;
-archive matching itself always uses exact UTF-8 names. The reader rejects known
-Windows syntax/device/component aliases on Windows. This library never writes into
-`start.output`.
+matching signal or successful playback. Output path checks, exclusive publication,
+close-before-emission, reuse and published-file lifetime belong to the caller.
+The [CLI runtime](https://github.com/o-kos/wireroom/blob/main/crates/cli/README.md)
+uses portable staging under caller-selected output whose ancestry and contents
+remain stable during the run. Archive matching always uses exact UTF-8 names;
+filesystem alias collisions must fail rather than overwrite or reuse a different
+asset. The reader rejects known Windows syntax/device/component aliases on Windows.
+This library never writes into `start.output`.

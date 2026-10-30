@@ -53,54 +53,29 @@ As with required archive and output I/O, the OS must eventually complete a pendi
 filesystem operation. This is diagnostic verification, not authentication or a
 snapshot: callers must keep source/archive contents stable throughout use.
 
-## Supported output and security boundary
+## Output publication
 
-Output is deliberately restricted to Linux. Every ancestor, starting at the actual
-filesystem root, is opened without following symbolic links. Only ext-family,
-Btrfs and tmpfs filesystems are accepted; overlay, network, FUSE and other filesystems
-are rejected conservatively. Every directory must expose inode flags and must not have the casefold flag.
-This includes tmpfs, which also supports per-directory casefolding
-(as documented by the Linux kernel).
-Kernels without the required tmpfs flag ioctl are rejected. This excludes case/Unicode folding configurations
-rather than attempting to emulate their filename equivalence. Non-Linux systems
-and namespaces exposing unmapped ancestor owners fail setup. Output paths containing parent components are rejected without rewriting.
-Kernel/filesystem
-support for `statx` mount IDs, `O_TMPFILE` and `renameat2(RENAME_NOREPLACE)` is required.
-Anonymous spool support is checked during setup; payload publication failures remain
-fatal when encountered.
+Caller-selected output and its ancestry are trusted and stable throughout the run.
+Local processes moving directories or mutating output are outside the contract.
+Archive paths and payload bytes remain untrusted. Shared lexical validation and
+recording platform-name checks precede filesystem use. Ordinary filesystem checks
+reject evident symlinks/non-directory payload ancestors and existing destinations.
+There are no UID, mode, mount or filesystem allowlists.
 
-Every traversed directory must belong to the effective UID or UID 0 and deny group
-and other write access. A root-owned sticky ancestor is permitted while traversing
-into a protected child, but the output root and every payload directory must belong to the effective UID
-and deny all group/other access (mode 0700 or stricter). Newly created directories use mode 0700 and staging files 0600;
-POSIX ACL grants are bounded by the checked group-class mask. Private payload
-directories also prevent other UIDs from acquiring hard-link aliases, without
-relying on the system-wide protected-hardlinks setting. All result
-ancestor mount IDs must equal the retained output-root mount ID, including bind
-mounts; reused files are checked too. Symbolic links and non-directory ancestors
-are rejected with handle-relative no-follow opens. Existing final destinations are
-collisions, including hard links and filesystem aliases.
+The portable `tempfile` facility supplies a single bounded spool and exclusive
+staging files under destination parents. Assets stream with exact size/CRC checks;
+writing handles close before `TempPath::persist_noclobber` publishes at the exact
+path without overwrite. Every result's files are ready before its descriptors.
+Reuse requires the same exact archive asset and size; no published handles are
+retained and no file is rewritten. Published files remain after failure and exit.
+A failed result can leave already published files without a descriptor.
 
-These ownership and access controls prevent a different unprivileged UID from
-renaming traversed ancestors while writing or publishing. Holding a directory
-handle alone would not do so. The caller security principal includes processes
-with the same effective UID: they already share its discretionary access and may
-modify its files. Caller modification of its output is outside the contract's
-published-file stability guarantee. Administrators with authority to bypass these
-permissions or change mounts are trusted, as by the operating system's ordinary
-file protection model. Source/archive stability remains the caller's obligation.
-This policy does not claim protection against hostile same-credential or privileged
-modification, nor accept arbitrary shared writable output as a fallback.
-
-Each asset is streamed with exact size and CRC verification into an exclusive
-staging file under its protected destination parent, synchronized and explicitly
-closed before exclusive publication. Every result's files are ready before any
-of its descriptors are emitted. Read-only file handles retain published identities;
-reuse requires the same exact archive path and size, regular-file identity and one
-hard link. A replaced path or new hard-link alias fails. Published files are never
-rewritten or removed, including on later failure. A failed result can leave already
-published files without a descriptor. Cleanup removes only this invocation's
-unpublished exclusive staging names; it never clears an output tree.
+Temporary-file cleanup applies only to invocation-owned unpublished files, never
+an output tree. Publication is not a multi-file transaction or a crash-durability
+guarantee. `tempfile` does not report close errors from dropping a writing handle;
+write and synchronization failures are checked before closing. Its no-overwrite
+publication API does not promise atomic removal of the old temporary name; a
+filesystem cleanup failure can leave that temporary link behind.
 
 ## Additional resource budgets
 
@@ -109,7 +84,7 @@ The recording/protocol limits still apply. Runtime budgets are smaller where not
 | Resource | Runtime limit |
 | --- | --- |
 | Pending block spool | 256 MiB of compact NDJSON including closing progress |
-| Spools / outstanding lookahead | One anonymous file / one unit |
+| Spools / outstanding lookahead | One temporary file / one unit |
 | Input queue | One decoded command plus one producer-side bounded line/command |
 | Published payloads | 65,536 distinct exact paths |
 | Total newly materialized payload bytes | 64 GiB per invocation |
@@ -125,13 +100,12 @@ still prevent terminal delivery, as can a broken stdout pipe.
 ## Validation
 
 The process suite reads the normative example directly from `docs/replay.md`,
-checks its producer values, exact payload and termination, and checks availability
-at descriptor delivery and after exit. Other tests cover controls/EOF, repeated and
-empty boundaries, lazy failures, CRC/asset errors, initial settings, collisions,
-symlinks, writable ancestry and retained identity replacement. Deterministic event
-writers inject controls during submitted blocks and finalization; pacing uses
-injected elapsed durations without real sleeps. Hash tests cover match/mismatch,
-read failure, cancellation and joining. Linux output tests require a normal owner
-view; a sandbox remapping trusted ancestor UIDs is intentionally rejected and must
-run these tests outside that mapping. Platform rejection is part of the supported
-configuration policy, not a silent downgrade.
+checks producer values, exact payload and termination, and checks availability at
+descriptor delivery and after exit. Common process tests run across platforms where
+practical; the deterministic packet-pipe exchange is Linux-specific and symlink
+fixtures use Unix APIs. Tests cover archive paths, destination/ancestor conflicts,
+repeated assets, all files before a result, CRC failures and temporary cleanup.
+Deterministic event writers inject controls during submitted blocks and finalization;
+pacing uses injected elapsed durations. Hash tests cover match/mismatch, read
+failure, cancellation and joining. Local validation currently uses the installed
+x86_64 Linux target; Windows/macOS execution has not been performed locally.

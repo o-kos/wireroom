@@ -40,9 +40,9 @@ excluded local mutation, UID/mount restrictions or descriptor exhaustion.
       changing implementation.
 - [x] Replace Linux output machinery with portable staging/publication and simplify
       output tests while preserving replay behavior.
-- [ ] Align active contracts, architecture instructions, CLI guides and changelog.
-- [ ] Run pinned formatting, all-target locked Clippy, locked workspace tests and
-      release build; report actual platform limits and push through the hook.
+- [x] Align active contracts, architecture instructions, CLI guides and changelog.
+- [x] Run pinned formatting, all-target locked Clippy, locked workspace tests and
+      release build; record actual platform limits.
 - [ ] Complete independent mechanical and intent review, then move this plan to
       completed (reserved for the orchestrator).
 
@@ -58,3 +58,8 @@ Run `cargo fmt --all -- --check`, `cargo clippy --all-targets --locked`,
 `cargo test --locked`, then `cargo build --release --locked`. Cached offline registry
 use is acceptable. Only x86_64 Linux is installed locally; compilation and execution
 on Windows/macOS must not be claimed without running them.
+
+Local validation passed on pinned Rust 1.97.1 using locked offline dependencies,
+including the full gate and subsequent release build. Only
+`x86_64-unknown-linux-gnu` was installed and exercised. Independent reviews remain
+pending; this plan stays active and the Pull Request stays Draft.

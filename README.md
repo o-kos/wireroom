@@ -23,8 +23,8 @@ reports exact original-source frames and retains independent cursors over the
 opened signal identity.
 
 `dmd run --message-format json` implements replay lifecycle, FIFO controls, pacing,
-asset publication and background diagnostic hashing. Its supported output
-configurations and resource limits are documented in the
+asset publication and background diagnostic hashing. Its output trust assumption
+and resource limits are documented in the
 [CLI runtime guide](crates/cli/README.md). Other commands and the Wireroom interface
 remain future work. The interface will use GPUI; its accepted window concept is in
 [`docs/ui`](docs/ui/README.md). See `docs/plans/` for active work.
@@ -36,9 +36,9 @@ cargo build --locked
 cargo build -p dmd --no-default-features --locked
 ```
 
-The workspace needs only Rust and its platform linker. Replay output currently
-requires a supported Linux configuration; other platforms build the CLI and report
-an explicit setup error. An independently supplied core implementation can implement
+The workspace needs only Rust and its platform linker. Replay uses portable output
+publication and trusts caller-selected output and its ancestry to remain stable
+during the run. An independently supplied core implementation can implement
 the same CLI and protocol contracts without sharing internal runtime interfaces.
 
 ## Contributing

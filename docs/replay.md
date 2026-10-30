@@ -355,47 +355,35 @@ resource budgets (including output space or spool space); exhaustion is a fatal
 resource failure at the point detected, not silent truncation. It must document
 those budgets, not claim every profile-valid recording will run with any resources.
 
-Before emitting any result containing file descriptors, safely materialize all of
-its required files and close them successfully. Check existing ancestors relative
-to an opened output-directory handle, create missing directories without following
-links, and create files exclusively. Use handle-relative no-follow operations or
-an equivalent platform mechanism covering every component, including rename or
-publication steps. Reject symlinks, junctions, mount/reparse indirections escaping
-the root, and hard-link/file alias hazards; a pre-existing destination is a
-collision, even if its bytes happen to match. Validate the output root during setup
-and retain its directory identity. A string-prefix containment check, or a
-canonicalize-then-open check, cannot prevent a concurrent replacement race.
-Holding a child-directory handle alone also does not prevent that directory from
-being moved outside the root. The implementation must protect traversed ancestry
-against relocation during writes/publication (for example through exclusive
-ownership and access control), or reject output where it cannot establish that
-protection. Handle-relative access must not become permission to write through a
-relocated ancestor. External caller modification of published files remains outside
-the stability guarantee below.
+The caller-selected output directory and its ancestry are trusted and stable
+throughout the run. Local processes relocating directories or mutating output are
+outside the contract. Archive paths and bytes remain untrusted. Validate the output
+root during setup. Under output, reject evident symlink/junction or non-directory
+payload ancestors and existing destinations, even if existing bytes match.
+Ordinary filesystem checks suffice under the stability assumption; do not silently
+rewrite a descriptor path to work around a conflict.
 
-Write into an exclusively owned file or staging file under that root, check decoded
-size and CRC, finish writing and close successfully, then publish without replacing
-any destination. Publication must be race-safe and exclusive. Do not emit the
-result until every referenced regular file is ready at its exact path. On reuse of
-an already emitted path, reuse only the same previously materialized asset and
-size, without rewriting; reject conflicting references. Protect identity when
-checking/reopening that path, and fail on external replacement rather than emitting
-a reference to an unrelated file. Aliasing to another path is not permission to
-reuse it. File stability is the replay writer's obligation; caller deletion or
-modification after publication is outside the recording guarantee.
+Stream each required asset into an exclusively owned staging file under its
+destination parent, verify exact decoded size and CRC, finish writing and close the
+writing handle, then publish at the exact path without overwriting any destination.
+Do not emit a result until all its referenced regular files are ready. Reuse only
+the same exact previously materialized archive asset and size, without rewriting;
+reject conflicting references. A filesystem alias to another path does not permit
+reuse. These requirements do not imply crash durability or an atomic multi-file
+transaction.
 
-Retain published files unchanged through and after exit. On failure, remove only
-unpublished temporary files demonstrably owned by this invocation, using the same
-safe handles; already published results remain available. Never clear output or
-recursively delete an arbitrary directory, even if setup or verification fails.
-An output directory that cannot support safe exclusive operations is unusable.
+Keep published files unchanged through and after exit until the caller removes or
+modifies output. A failed result may leave files already published before its
+failure. Cleanup removes only invocation-owned unpublished temporary files; never
+clear output or recursively delete an arbitrary directory. Failure to prepare
+output or perform exclusive publication is an explicit error.
 
 ## Lazy validation and failure classification
 
 Before `started`, open the signal and companion, derive source metadata, inspect
 the bounded ZIP index and its names/types/declared limits, read and validate all
 metadata including its CRC, check version compatibility and settings, open the
-journal for streaming, and prepare safe output access. Index enumeration is
+journal for streaming, and prepare output access. Index enumeration is
 required structural work; it is not a scan/decompression of every archive member.
 Do not scan the whole journal, extract all payloads or hash the whole signal as a
 startup prerequisite. Content/local-header checks for unopened payloads are lazy.
@@ -434,7 +422,7 @@ asset reads remain fatal even if an independent background hash also fails.
 | Invalid/missing newline, JSON/type/range error, forbidden stored event, invalid block order, premature/duplicate marker | Fatal when read: before `started` if encountered opening required data, otherwise fatal `error` then `finished(error,F)`, nonzero exit. |
 | Journal EOF without marker, unterminated block, journal CRC/size failure or truncated compressed bytes | Fatal when encountered; normal end is never inferred merely from reaching source frame N. |
 | Missing referenced asset, decoded size mismatch, CRC/decompression/read failure, unsafe descriptor path, invalid phase points | Fatal when required/decoded, before its result is emitted. Previously emitted results remain valid. |
-| Output collision, filesystem indirection/race, write/close/publication failure, resource exhaustion | Fatal when detected; no partial result descriptor and no unrelated overwrite. |
+| Output collision, symlink/non-directory ancestor, detected write/validation/publication failure, resource exhaustion | Fatal when detected; no partial result descriptor and no unrelated overwrite. |
 | Invalid live tune/patch or command | Nonfatal command `error`, no state change, continue playback. |
 | Valid digest differs or background verification cannot complete | `log` with `level: "warning"`, continue playback; never an unsolicited nonfatal `error`. |
 | stdout failure | Stop work, stderr diagnostic if possible, nonzero exit; no promise of terminal delivery. |
@@ -576,7 +564,7 @@ to its successful exchange. Fatal examples assume stdout works.
 | Higher minor, unknown metadata field, opaque extra result key, `{"record":"vendor-note","value":7}` at a boundary | Valid ignorable extension except the result key, which is preserved. Required fields remain validated. |
 | Unknown root ZIP entry, duplicate `metadata.json`, a payload entry name containing a parent-directory component, a symlink entry, or an encrypted member | Fatal setup index failure, even if the member would be unused. |
 | Descriptor `files/missing.bin`, CRC-damaged required asset, size 5 for the four-byte asset, or a descriptor path beginning with a parent-directory component | Fatal when the result/asset is read; emit no such result. |
-| Existing `out/files/message.bin`, an ancestor symlink/junction, case alias collision, or directory replacement race | Fatal before descriptor emission; do not overwrite, follow or rename to work around it. |
+| Existing `out/files/message.bin`, a payload ancestor symlink/junction or non-directory, or a filesystem alias collision | Fatal before descriptor emission; do not overwrite, follow or rename to work around it. |
 | Missing unused payload contents or an unread corrupt journal suffix on early stop | No eager verification obligation. An indexed structural defect already detected still fails; an early stop does not certify unseen contents. |
 | Declared size/entry-count limit exceeded | Fatal setup failure. Actual decompression exceeding limits, spool exhaustion or full output disk is fatal when encountered. |
 | Valid digest differs, or background hash read fails/cannot finish | Warning log only, playback and its terminal reason continue. Required signal-header or asset failure is separately fatal. |
