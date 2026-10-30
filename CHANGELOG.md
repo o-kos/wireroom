@@ -6,6 +6,9 @@ All notable user-visible changes are documented here, following Keep a Changelog
 
 ### Added
 
+- Read-only PCM WAVE source metadata library with exact frame counts, retained
+  source identity and bounded header inspection.
+
 - Read-only replay recording library with bounded ZIP indexing, validated metadata,
   incremental journal boundaries and lazy payload integrity verification.
 

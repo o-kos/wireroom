@@ -32,7 +32,10 @@ are specified, with producer schemas still deferred. The shared
 [`dmd-protocol`](crates/protocol/README.md) library implements individual messages
 and bounded NDJSON codecs. The read-only [`dmd-replay`](crates/replay/README.md)
 library validates companion archives and metadata, reads journal boundaries and
-streams payloads with integrity checks.
+streams payloads with integrity checks. The read-only
+[`dmd-source`](crates/source/README.md) library inspects strict PCM WAVE headers,
+reports exact original-source frames and retains independent cursors over the
+opened signal identity.
 
 Runtime, playback controls and the Wireroom interface remain future work; the CLI
 commands still report that they are not implemented. The interface will use GPUI;
