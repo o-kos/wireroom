@@ -136,8 +136,12 @@ implementation also passed the then-applicable native checks before #25;
 those checks no longer exist in the current workspace.
 
 The current full local gate, all 17 source tests, release rebuild and CLI build
-with no default features passed after integration. Final integration reviews
-remain pending. The owner authorized
+with no default features passed after integration. Mechanical round 3 was clean
+across workspace/build/gate integration, architecture and source units, API/docs,
+test portability and scope/provenance/lifecycle. It confirmed that the source
+implementation and tests are unchanged and that the earlier clean assessments
+remain valid. No substantive findings were raised, accepted or declined.
+Final intent review remains pending. The owner authorized
 completion and merging of the existing Pull Request on 2026-10-30. Ready status,
 successful required `ci/full` on an up-to-date branch and squash merge remain
 the final completion steps.
