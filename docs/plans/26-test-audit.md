@@ -35,8 +35,8 @@ reversible removal. Optional audit trims are deferred to keep scope concrete.
 ## Implementation steps
 
 - [x] Remove the six duplicates and simplify the source metadata fixture; remove unused dev-dependencies and update the lockfile.
-- [ ] Record exact reduction, counts, warm workspace/CLI timings and coverage limits; pass the full pinned gate and release build.
-- [ ] Push through the installed hook and update Draft PR #27 with cleanup and pending independent reviews.
+- [x] Record exact reduction, counts, warm workspace/CLI timings and coverage limits; pass the full pinned gate and release build.
+- [x] Update Draft PR #27 with cleanup and pending independent reviews; prepare the hook-validated push.
 - [ ] Complete independent mechanical and intent reviews, then move this plan to `completed/` under the final review workflow.
 
 ## Validation and handoff
@@ -47,3 +47,33 @@ may be used offline. Policy/hook tests are conditional on changes to their code,
 which are outside this cleanup. Measure a warm full test run and a subsequent
 CLI-only run without competing Cargo work; report observations, not benchmarks.
 Leave the PR Draft and this plan active for independent removal reviews.
+
+## Cleanup evidence
+
+Removed six test functions (99 physical Rust lines) and reduced the source fixture
+from 133 to 39 lines (94 net lines), for 193 net Rust test/support lines removed.
+The two dev-dependency declarations and their two source lockfile edges were also
+removed; the packages remain used elsewhere. Test/support now totals 5,637 lines
+under the audit's classification; production remains 4,021 lines.
+
+On the pinned toolchain, formatting, all-target locked Clippy, locked workspace
+tests and the subsequent release build passed with cached dependencies offline.
+A compilation/warm-up run preceded sequential timed runs with no competing Cargo
+work or Cargo lock waits. `/usr/bin/time -p` around `cargo test --locked --offline`
+observed 9.00 seconds real (12.69 user, 0.73 system); the subsequent
+`cargo test -p dmd --locked --offline` observed 1.14 seconds real (0.20 user,
+0.11 system). The supplied pre-cleanup observations were 8.87 and 1.14 seconds;
+these observations show no speedup and are not a benchmark.
+
+Workspace results: 131 passed (129 unit/integration plus two doctests), zero failed,
+eight ignored, versus 137 passed and eight ignored before cleanup. CLI: 45 passed
+versus 48 before. Policy/hook sources were untouched, so conditional ignored policy
+tests were not required. No suppressions, thresholds or production behavior changed.
+
+Loss is limited to the explicitly listed redundant variants, isolated private-helper
+checks and the separate source-to-replay smoke; source metadata and actual composed
+process execution remain checked. This is not proof that every remaining test is
+necessary. Normative full-process exchange remains Linux-specific; output file-count
+and byte-accounting extreme boundaries still lack direct tests. Hash test hooks and
+any broader scope reduction are outside this change. Independent removal mechanical
+and intent reviews remain pending; keep this plan active and PR #27 Draft.
