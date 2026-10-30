@@ -41,39 +41,48 @@ require the scaffold's crates, feature and validation commands.
 
 ## Implementation steps
 
-- [ ] Remove unused crates, feature wiring and stale lockfile packages.
-- [ ] Update hook/CI validation, active documentation and plan template.
-- [ ] Validate CLI behavior, Rust-only builds and all hook/policy tests.
+- [x] Remove unused crates, feature wiring and stale lockfile packages.
+- [x] Update hook/CI validation, active documentation and plan template.
+- [x] Validate CLI behavior, Rust-only builds and all hook/policy tests.
 - [ ] Complete mechanical review and resolve substantive findings.
 - [ ] Complete intent review against the removal request and invariants.
 - [ ] Move this plan to `docs/plans/completed/` before final owner review.
 
 ## Criterion-to-evidence map
 
-| Acceptance criterion | Evidence to collect |
+| Acceptance criterion | Evidence |
 | --- | --- |
-| Remove complete ABI scaffold | Deleted-file inventory and search for remaining live references. |
-| Remove dependency/feature wiring | Cargo metadata/lockfile diff; existing CLI parser and command tests. |
-| Preserve meaningful hook/CI gates | Hook/workflow diff, ignored policy/hook tests, CI decision-logic tests. |
-| Remove obsolete tests, retain policies | Deleted native-isolation tests and passing dependency/toolchain policies. |
-| Update active docs, preserve contracts | Documentation/reference search; unchanged accepted specifications and historical plans. |
-| Rust-only validation and lifecycle | Full local gate, workspace checks/tests, release build, independent reviews and Draft PR. |
+| Remove complete ABI scaffold | Deleted all nine tracked files under `crates/core-sys` and `crates/native`, plus `native_isolation.rs`. Reference search leaves no live scaffold commands or wiring. |
+| Remove dependency/feature wiring | Cargo metadata lists only `dmd`, `dmd-protocol` and `dmd-replay`; CLI features are empty. Lockfile removes only the two deleted packages and the CLI dependency edge. Existing CLI tests pass; manual `auto`, `native` and `replay` backend selections retain the not-implemented response. |
+| Preserve meaningful hook/CI gates | Quick CI now runs `cargo test --locked`. Only native-specific steps were removed; policy selection and status aggregation are unchanged. All eight ignored hook/policy tests, including 27 content-policy unit tests, pass. CI decision-logic tests pass. |
+| Remove obsolete tests, retain policies | Deleted only the dedicated native-isolation integration test. Unchanged dependency-source and Rust-only build-graph policies pass. |
+| Update active docs, preserve contracts | Updated `AGENTS.md`, `CONTRIBUTING.md`, README and plan template; removed obsolete static-library ignore rules. CLI source/tests, replay implementation, accepted specifications and historical completed plans have no diff. |
+| Rust-only validation and lifecycle | Full local gate, workspace checks/tests, release and no-default-features builds pass. Full pre-push invocation passes with generic and configured local policy. Independent reviews and lifecycle actions remain pending. |
 
 ## Validation
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
-- [ ] `cargo test -p dmd-protocol --test policy --locked -- --ignored`
-- [ ] `cargo check --workspace --all-targets --locked`
-- [ ] `cargo test --workspace --locked`
-- [ ] CI status decision-logic tests.
-- [ ] `cargo build --release --locked` after the gate.
-- [ ] `cargo build -p dmd --no-default-features --locked`
-- [ ] Full pre-push hook, including generic and configured local content policy.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
+- [x] `cargo test -p dmd-protocol --test policy --locked -- --ignored`
+- [x] `cargo check --workspace --all-targets --locked`
+- [x] `cargo test --workspace --locked`
+- [x] CI status decision-logic tests.
+- [x] `cargo build --release --locked` after the gate.
+- [x] `cargo build -p dmd --no-default-features --locked`
+- [x] Full pre-push hook, including generic and configured local content policy.
 
-The plan-only push uses the existing gate before the scaffold is removed. Later
-pushes use the documented gate with only obsolete native-specific steps removed.
+Validation completed with the pinned Rust 1.97.1 toolchain. CI decision tests were
+compiled with `rustc --test` into `target/ci-status-tests`. Command logs are retained
+locally under `target/cleanup-24/`; no new tests, dependencies, lint suppressions or
+threshold changes were added.
+
+The full pre-push hook was invoked directly without pushing, using the committed
+branch range from its merge base with `main` to `HEAD`. It passed the current Rust
+gate, generic content policy and the configured local policy. The eight ignored tests
+also cover generic/configured policy behavior and conditional test selection. Content
+checks for the implementation's eventual outgoing commits must run again after the
+orchestrator commits them. No commit, push or lifecycle action was performed.
 
 ## Review and final status
 

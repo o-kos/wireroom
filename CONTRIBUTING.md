@@ -85,19 +85,8 @@ explains the failure:
 ```sh
 cargo fmt --all -- --check
 cargo clippy --all-targets --locked
-mkdir -p target
-native_lib_dir=$(mktemp -d "$PWD/target/native-clippy.XXXXXX")
-DMD_CORE_LIB_DIR="$native_lib_dir" cargo clippy -p dmd --features native --all-targets --locked
-rmdir "$native_lib_dir"
 cargo test --locked
-cargo test -p dmd-native --locked
 ```
-
-The native Clippy step type-checks and lints native code without a core. Its library
-directory is empty: Clippy checks the native feature without building or linking the
-application binary. Both CI tiers run this step with Bash: on Linux for Draft Pull
-Requests and on Linux, Windows and macOS for the full tier.
-The separate native test step runs the core-independent tests that default members exclude.
 
 Use `git push --no-verify` only as an explicit escape hatch. State the reason and the
 checks bypassed in the Pull Request. A bypass does not replace validation or review.
@@ -109,8 +98,8 @@ Administrators are not included in the protection, so an administrator can still
 to or merge into `main` directly. For that reason the hook, an early local copy of the
 gate, also refuses direct pushes to `main`. Server-side merges do not execute it.
 
-Draft Pull Requests run formatting, default and native lints, conditional policy tests
-and core-independent native tests on Linux, producing `ci/quick`. Ready Pull Requests,
+Draft Pull Requests run formatting, Clippy, normal tests and conditional policy tests
+on Linux, producing `ci/quick`. Ready Pull Requests,
 pushes to `main` and manual runs require Linux, Windows and macOS tests and release
 builds, producing `ci/full`. Skipped results do not count as successes. The required
 check on `main` is `ci/full`, and the branch must be up to date with `main` before
@@ -228,26 +217,17 @@ if save_results {
 Write code comments only when intent is not evident from the code, and keep them
 concise.
 
-## Native builds
+## Future native integration
 
-The default build and tests require only Rust and the platform's ordinary Rust linker,
-with no Python, CMake, C++ compiler or signal core. Optional dependencies keep native
-crates out of default builds. Even explicit crate or workspace-wide selection requires
-no core: the core linking script is inert unless its default-off `native` feature is
-enabled transitively by the CLI native feature.
+Current workspace builds and tests require only Rust and the platform's ordinary Rust
+linker, with no Python, CMake, C++ compiler or signal core. There is no native Cargo
+feature or ABI contract in the current workspace. The CLI retains its backend parser;
+runtime execution is not implemented.
 
-For a native build, set `DMD_CORE_LIB_DIR` to the directory containing the prebuilt
-static library. `DMD_CORE_LIB_NAME` defaults to `dmd_core` (without a filename prefix or
-extension). `DMD_CORE_EXTRA_LIBS` is an optional semicolon-separated list of additional
-link targets, using Cargo link-library syntax. Then run:
-
-```sh
-cargo build -p dmd --features native
-```
-
-The ABI contract is `crates/core-sys/include/dmd_core.h`. Its implementation is not
-part of this repository. With `native` disabled, the core linking script performs no
-environment reads, probing or linking.
+Native processing remains future work. Agree its integration boundary alongside an
+actual implementation, preserving Rust-only replay builds and the architectural
+invariants in `AGENTS.md`, including explicit errors, source-frame positions, path
+safety and ownership and unwind safeguards at any future FFI boundary.
 
 ## 4. External review
 

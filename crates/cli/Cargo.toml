@@ -5,15 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-[features]
-default = []
-native = ["dep:dmd-native"]
-
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
 dmd-protocol.workspace = true
-dmd-native = { workspace = true, optional = true, features = ["native"] }
 
 [lints]
 workspace = true
