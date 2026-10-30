@@ -3,10 +3,19 @@
 ## Purpose and architecture
 
 Wireroom is the product: an application for demodulating recorded signals and
-inspecting results. It starts `dmd` and consumes its events. `dmd` is also a complete
-command-line tool. Native processing is future work; its integration boundary will
-be agreed when an actual implementation is available. The interface toolkit is GPUI,
-through GPUI Kit, following the component principles of
+inspecting results. It starts a selected `dmd` executable and consumes its events.
+`dmd` is also a standalone command-line tool.
+
+Replay and core are separate implementations of the `dmd` application, not backends
+selected by a flag inside one application. This repository develops only the replay
+implementation. A core implementation can be developed independently against the
+same CLI and run-protocol specifications. `wr` launches the selected executable and
+uses the common protocol; it does not require a shared internal backend interface.
+
+Do not plan signal-core integration, native loading, a C ABI or a general backend
+abstraction in this repository. The CLI has no backend selector; do not add automatic implementation selection.
+
+The interface toolkit is GPUI, through GPUI Kit, following the component principles of
 [Argand](https://github.com/o-kos/argand). The planned interface crate will build
 the `wr` binary, while `dmd` keeps its name.
 
@@ -15,7 +24,7 @@ the `wr` binary, while `dmd` keeps its name.
 - `crates/protocol`: shared event types and bounded NDJSON codecs.
 - `crates/replay`: read-only recording validation and payload streaming.
 - `crates/source`: read-only source metadata and retained file access.
-- `crates/cli`: command-line surface and backend selection.
+- `crates/cli`: the replay implementation's command-line surface.
 - `assets/icons/`: colour and monochrome Wireroom icon sources, with optical variants
   for small sizes.
 - `docs/plans`: active plans; `docs/plans/completed`: finished plans.
@@ -23,7 +32,8 @@ the `wr` binary, while `dmd` keeps its name.
 - `.github/scripts`: CI decision logic; `scripts`: local policy checks.
 
 The event protocol and recording contract are specified in `docs/protocol.md` and
-`docs/replay.md`. Runtime execution and playback controls remain future work.
+`docs/replay.md`. Replay runtime execution and playback controls are implemented by `crates/cli`;
+its supported output configurations and budgets are in `crates/cli/README.md`.
 
 ## Commands
 
@@ -32,7 +42,7 @@ Use the toolchain pinned by `rust-toolchain.toml`.
 ```sh
 cargo build
 cargo run -p dmd -- --help
-cargo run -p dmd -- --backend replay list
+cargo run -p dmd -- list
 cargo fmt --all -- --check
 cargo clippy --all-targets --locked
 cargo test --locked
@@ -40,24 +50,19 @@ cargo build --release --locked
 cargo build -p dmd --no-default-features
 ```
 
-The CLI currently reports that each command is not implemented. There is no native
-Cargo feature or signal-core integration in the current workspace.
+`dmd run --message-format json` implements replay. Other commands and human output
+remain unimplemented. There is no native Cargo feature or signal-core integration.
 
 ## Architectural invariants
 
-- Current workspace builds and tests require no Python, CMake, C++ toolchain or signal
-  core. Future native integration must keep replay-only builds Rust-only.
-- There is no silent fallback. A core that fails to load or a corrupt recording is an
-  error, never a quiet switch to the other backend.
+- Workspace builds and tests require no Python, CMake, C++ toolchain or signal core.
+- Source and recording failures are explicit errors. Never silently repair data,
+  switch processing implementations or fall back to real signal processing.
 - Sample positions are frames of the source file. For IQ, one frame is an I/Q pair.
 - Paths from recordings and result identifiers stay inside the output directory.
   Never delete an arbitrary directory recursively.
-- Any future C ABI must keep STL types and C++ exceptions behind the boundary. Memory
-  must be released by its allocator's side, with Rust RAII closing resources. Panics
-  must not unwind across FFI boundaries.
-- Future native execution must never silently ignore replay-only options.
-- Event protocol and recording format versions are independent; any future C ABI
-  must have its own version.
+- Event protocol and recording format versions are independent. This repository
+  does not define a signal-core ABI.
 - Use `thiserror` in libraries and `anyhow` in binaries. Non-test code must not
   `unwrap` or `expect` on external data.
 - Every lint suppression, including a relaxed threshold, requires project-owner

@@ -102,8 +102,9 @@ lifecycle phase.
 - [x] Implement cancellable retained-identity SHA-256 diagnostics.
 - [x] Add deterministic runtime and real-process contract/error/safety tests.
 - [x] Update active architecture/runtime documentation and CHANGELOG in English.
-- [ ] Complete the full validation gate and release build after round 1 corrections.
-- [ ] Push corrections and update the existing Draft PR for orchestrator review.
+- [x] Complete the full validation gate and release build after round 1 corrections.
+- [x] Prepare focused corrections and update the existing Draft PR for orchestrator
+      review; retain Draft state through publication.
 
 ## Validation
 
@@ -116,10 +117,10 @@ lifecycle phase.
 - [x] Cover digest match, mismatch, read/modification failure and cancellation.
 - [x] Verify pacing with deterministic elapsed-time tests, including pause and
       speed changes, max, repeated frontiers and large coordinates.
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked` (repository warning policy)
-- [ ] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the gate passes
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked` (repository warning policy)
+- [x] `cargo test --locked`
+- [x] `cargo build --release --locked`, after the gate passes
 
 ## Mechanical review round 1 corrections
 
@@ -138,16 +139,39 @@ cleanup correction is also in scope.
 - [x] Cover retained-source match, mismatch, read failure, modification and cancellation
       through runtime completion; check warning frontier/order/count and terminal
       reasons. Break stdout with active workers and verify cancellation and joins.
-- [ ] Commit all owner architecture instructions and runtime documentation together.
+- [x] Commit all owner architecture instructions and runtime documentation together.
 
 ## Implementation validation evidence
 
-Round 1 validation is in progress. Earlier helper tests did not establish complete
-process-example, runtime-clock or retained-source diagnostic coverage; the previous
-validation claim has been replaced by the explicit corrections above. Output tests
-require the host ownership view: the sandbox's mapped ownership deliberately fails
-protected-ancestry validation. Cached dependencies are used with locked offline Cargo
-commands. No lint suppressions or threshold relaxations are permitted.
+The pinned Rust 1.97.1 toolchain passes formatting, all-target Clippy and the full
+locked offline workspace suite: 138 passed including two doctests, with eight
+unchanged conditional policy/hook tests ignored. The CLI contributes 49 tests:
+23 unit/runtime, six command and 20 process tests. The locked offline release build
+passes after the complete gate.
+
+The process example compares all documented requests and complete event values at
+speed 1, including FIFO controls, exact payload availability and unchanged bytes
+after exit. A single-packet stdout pipe holds the first result while a second stdin
+read proves pause has entered the bounded command FIFO; this coordinates the first
+block boundary without guessed timing or public protocol additions. The initial
+source-time budget remains one second.
+
+Worker tests synchronize cancellation after one compressed refill has been inflated,
+then assert exactly two compressed reads, no further refill, joining and terminal
+completion. The full uncancelled fixture also validates. Injected monotonic time
+exercises runtime clock/control accounting. Retained-source diagnostics cover five
+outcomes for both end and stopped terminal reasons, with warning count, order and
+frontier checks. A synchronized runtime test breaks stdout with both workers active;
+a real-process test breaks it after started and producer activity, keeps stdin open
+and requires nonzero termination.
+
+Output tests use the host ownership view: mapped untrusted ancestor ownership is
+deliberately rejected. Supported output configurations and the caller/OS trust
+boundary remain unchanged; packet-pipe coordination is Linux-specific. Cancellation
+cannot interrupt an individual OS operation before that operation returns. No lint
+suppressions or threshold relaxations were added. All owner AGENTS.md architecture
+edits and integrated runtime updates are included intentionally. Subsequent reviews
+remain the orchestrator's responsibility; none were invoked for these corrections.
 
 ## Post-completion
 
