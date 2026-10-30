@@ -101,13 +101,26 @@ fn literal_companion_paths() {
         );
     }
 }
-#[test]
-fn complete_specification_example_has_independent_expectations() {
+fn replay_specification() -> String {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(2)
         .unwrap();
-    let spec = std::fs::read_to_string(root.join("docs/replay.md")).unwrap();
+    std::fs::read_to_string(root.join("docs/replay.md")).unwrap()
+}
+#[test]
+fn complete_specification_example_has_independent_expectations() {
+    assert_specification_example(&replay_specification());
+}
+#[test]
+fn complete_specification_example_accepts_crlf_markdown() {
+    let spec = replay_specification()
+        .replace("\r\n", "\n")
+        .replace('\n', "\r\n");
+    assert_specification_example(&spec);
+}
+fn assert_specification_example(spec: &str) {
+    let spec = spec.replace("\r\n", "\n");
     let section = spec.split("`example.wav.replay`").nth(1).unwrap();
     let metadata = section
         .split("```json\n")

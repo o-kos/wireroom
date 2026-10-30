@@ -95,7 +95,7 @@ only its last 22 locator bytes before reading the central directory.
 ## Validation results
 
 The full local gate and release build passed on the implementation. The new crate
-has 42 Rust tests and one compile-checked documentation example; its runnable
+has 43 Rust tests and one compile-checked documentation example; its runnable
 `inspect` example builds with the normal all-targets checks. Existing protocol,
 CLI, dependency-policy and core-independent native tests pass. The eight existing
 hook/content-policy tests remain intentionally ignored because their source was
@@ -178,6 +178,22 @@ specification example passed again. The example reported blocks `0..4`, `4..4`,
 The plan moved to `docs/plans/completed/` before final owner review. The owner
 approved the final change on 2026-10-30. Ready status, successful required `ci/full`
 on an up-to-date branch and squash merge are tracked in Pull Request #21.
+
+### Full-CI fixture portability
+
+Ready CI passed on Linux and macOS, but Windows exposed a test-fixture portability
+bug: the documentation example extractor searched for LF code fences in a CRLF
+checkout. Its panic occurred before any archive was opened.
+
+The fixture extractor now normalizes only Markdown line endings before locating
+the same metadata/journal example. An explicit CRLF document test reproduces the
+Windows failure on every platform and reuses all independent result assertions.
+It failed before the correction and passes afterward. Production reader code,
+accepted contracts, producer values and the separate wire-CRLF tests are unchanged.
+The suite now has 43 Rust tests and one documentation example. The local gate
+and release rebuild passed after correction. Focused review was clean for
+portability, regression coverage, unchanged production semantics, owner intent
+and plan accuracy. Repeated full CI remains required before squash merge.
 
 ## Post-completion
 
