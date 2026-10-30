@@ -8,7 +8,8 @@ Implement `dmd run --message-format json` using the source, recording and protoc
 libraries. Preserve exact producer values, source coordinates and payload bytes,
 FIFO controls, bounded lazy lookahead, pacing, cancellation, hashing and terminal
 semantics. Other commands, GUI, discovery, exports and signal processing are outside
-scope. Keep PR #27 in Draft for independent mechanical and intent review.
+scope. PR #27 remains Draft, ready for final owner review. Ready and merge
+transitions are outside this handoff.
 
 ## Decisions
 
@@ -43,8 +44,8 @@ excluded local mutation, UID/mount restrictions or descriptor exhaustion.
 - [x] Align active contracts, architecture instructions, CLI guides and changelog.
 - [x] Run pinned formatting, all-target locked Clippy, locked workspace tests and
       release build; record actual platform limits.
-- [ ] Complete independent mechanical and intent review, then move this plan to
-      completed (reserved for the orchestrator).
+- [x] Complete independent mechanical and intent review, then move this plan to
+      completed for final owner review while PR #27 remains Draft.
 
 ## Validation
 
@@ -56,34 +57,28 @@ and cancellation tests. No test quota or hostile-concurrency guarantee is intend
 
 Run `cargo fmt --all -- --check`, `cargo clippy --all-targets --locked`,
 `cargo test --locked`, then `cargo build --release --locked`. Cached offline registry
-use is acceptable. Only x86_64 Linux is installed locally; compilation and execution
-on Windows/macOS must not be claimed without running them.
+use is acceptable. The pinned local gate and subsequent release build passed on
+Rust 1.97.1 with locked offline dependencies on x86_64 Linux, without lint
+suppressions or hook bypass.
 
-Local validation passed on pinned Rust 1.97.1 using locked offline dependencies,
-including the full gate and subsequent release build. Only
-`x86_64-unknown-linux-gnu` was installed and exercised. Independent reviews remain
-pending; this plan stays active and the Pull Request stays Draft.
+[Full CI](https://github.com/o-kos/wireroom/actions/runs/41115478768) succeeded on
+the final code revision on Linux, Windows and macOS, including formatting, Clippy,
+tests, release and no-default-features builds. This run precedes only the final
+documentation handoff; it does not validate that later documentation commit.
 
-## Simplification review round 1 correction
+## Review outcome
 
-- [x] Accept P2: CRLF specification checkouts break LF-only Markdown fence
-      delimiters in runtime and playback fixtures; remote Windows CI independently
-      confirmed the failure before runtime behavior could execute. Other review
-      categories were clean, and no findings were declined.
-- [x] Normalize CRLF before parsing in the runtime fixture and all three playback
-      readers: fixture metadata, example journal and normative exchange. Keep
-      production behavior and public contracts unchanged.
-- [x] Exercise the actual fixture parsers with a temporarily CRLF-converted
-      `docs/replay.md`: `cargo test -p dmd --locked --offline` passed all 48 tests,
-      including the normative exchange; a `finally` restoration restored the
-      original specification bytes and verified byte-for-byte equality.
+Accepted runtime findings were fixed: Deflate cancellation and complete real-process
+example, pacing, hash and active-worker coverage. Output-specific findings were
+superseded by the owner-approved trusted/stable-output replacement described above;
+they are not unresolved findings. No findings were declined.
 
-A brief inspection of path operations and platform gates found no obvious additional
-blocker in the newly reachable suites; Unix symlink tests and Linux packet-pipe tests
-retain their platform guards. Windows/macOS/Linux CI will be rerun independently.
-Round 2 mechanical and intent review remain reserved for the orchestrator; this
-correction does not mark either review clean or complete.
+The final simplification review accepted one P2 for CRLF specification fixtures.
+All four specification readers now normalize CRLF; the actual 48-test dmd suite
+passed against a temporarily CRLF-converted specification, and the original bytes
+were restored and verified. All other categories were clean. Mechanical round 2
+and the complete-change intent review were clean, with no substantive findings or
+requested corrections.
 
-After the correction, the pinned formatting check, all-target locked offline Clippy,
-locked offline workspace tests and subsequent locked offline release build all
-passed on Linux. The installed pre-push hook remains enabled without bypass.
+The completed plan and Draft PR are ready for final owner review. Marking Ready
+and merging are outside the authorized final state.
