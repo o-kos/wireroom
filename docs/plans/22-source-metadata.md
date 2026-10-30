@@ -52,7 +52,7 @@ The owner explicitly requested reuse of Argand's file-reading code.
 - [x] Add Rust fixtures, bounded-work/failure/identity evidence and replay composition.
 - [x] Document the public API, support matrix, obligations and provenance.
 - [x] Complete the local gate and release build without lint suppressions.
-- [ ] Complete mechanical review and resolve substantive findings.
+- [x] Complete mechanical review and resolve substantive findings.
 - [ ] Complete intent review against acceptance criteria and invariants.
 - [ ] Move the plan to `docs/plans/completed/` before final owner review.
 
@@ -93,8 +93,16 @@ Unix-only. No mechanical or intent reviewer was invoked in this implementation.
 
 ## Review and final status
 
-Mechanical and intent review are pending. Keep the Pull Request Draft for final
-owner review as requested. Ready status, successful required `ci/full` on an
+Mechanical round 1 was clean in all five categories: malformed-input/resource
+boundaries and retained identity; architecture and source units; public errors
+and API documentation; substantive test gaps and portability; scope, provenance
+and maintainability. The reviewer confirmed actual Argand code adaptation and
+preservation of the narrower Issue semantics. No substantive finding was raised,
+accepted or declined; no correction round was needed. Windows execution remains
+for CI.
+
+Intent review is pending. Keep the Pull Request Draft for final owner review
+as requested. Ready status, successful required `ci/full` on an
 up-to-date branch and squash merge require the later owner-approved completion.
 
 ## Post-completion
