@@ -6,6 +6,9 @@ All notable user-visible changes are documented here, following Keep a Changelog
 
 ### Added
 
+- Read-only replay recording library with bounded ZIP indexing, validated metadata,
+  incremental journal boundaries and lazy payload integrity verification.
+
 - Shared run protocol 1.0 command/event types, exact producer JSON preservation,
   individual-message validation and bounded streaming NDJSON codecs.
 

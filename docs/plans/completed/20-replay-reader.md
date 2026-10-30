@@ -1,0 +1,203 @@
+# Issue #20: Replay recording reader
+
+Resolves #20.
+
+## Overview
+
+Add a read-only `dmd-replay` library for recording format 1.0. It validates the
+archive and metadata, reads the journal incrementally with explicit block and
+finalization boundaries, and streams lazily verified payloads. Runtime, controls,
+UI, signal decoding/hashing and output materialization remain outside scope.
+
+## Context
+
+- `docs/replay.md` and `docs/protocol.md` are the accepted contracts.
+- `dmd-protocol` supplies exact JSON and individual-message validation, but does
+  not validate recording structure or filesystem safety.
+- The caller supplies source frames; all coordinates remain original-file frames.
+- Unread contents are not certified. Full journal/asset integrity requires EOF.
+- A verified payload is not a safely published output file.
+
+## Decisions
+
+- Isolate recording concerns in `crates/replay`, included in default validation.
+- Retain an opened archive identity, bound its index before allocation, and check
+  local structure and CRC only for consumed members.
+- Reuse public protocol types and exact JSON; enforce replay depth separately.
+- Expose journal records and boundaries incrementally, documenting provisional
+  block validation rather than requiring a whole block in memory.
+- Keep resource budgets explicit and errors inspectable; never repair data.
+- Use registry dependencies with a Rust-only decompression backend (`flate2` and
+  `crc32fast`). Track raw Deflate stream end and exact compressed consumption,
+  independently of the declared decoded size and CRC.
+- Expose prefix progress as `Record::Boundary`, suffix progress as its stored
+  protocol event, and the service marker as `Record::Finalization`.
+- Cap distinct remembered asset references at 65,536; exceeding this independent
+  bookkeeping budget fails explicitly instead of growing with journal length.
+- Bound aggregate central-directory candidate validation work to 64 MiB of index
+  bytes per setup, independently of the portable per-index limit. Charge before
+  reading each accepted candidate layout; exhaustion is a fatal resource failure,
+  while rejected opaque-comment candidates retain normal fallback behavior.
+
+## Rejected alternatives
+
+- Implementing process execution, playback controls, source parsers or output
+  extraction: separate responsibilities explicitly excluded by the Issue.
+- Eager extraction or a complete journal scan at startup: defeats lazy validation.
+- A generic lossy JSON tree: cannot preserve producer numbers and duplicate keys.
+- Reopening archive paths per member: does not retain the selected identity.
+- Relaxing lint limits or suppressing warnings: refactor within existing policy.
+
+## Implementation steps
+
+- [x] Implement archive/index/member integrity and bounded lazy asset access.
+- [x] Implement metadata, settings matching and incremental journal validation.
+- [x] Complete public documentation, conformance fixtures and criterion coverage.
+- [x] Complete the local validation gate and release build.
+- [x] Complete mechanical review and resolve substantive findings.
+- [x] Complete intent review against all criteria and invariants.
+- [x] Move this plan to `docs/plans/completed/` before final owner review.
+
+## Validation
+
+- [x] Map all 12 Issue criteria to tests or explicit caller obligations.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] Native Clippy with an empty core directory, as in `CONTRIBUTING.md`.
+- [x] `cargo test --locked`
+- [x] `cargo test -p dmd-native --locked`
+- [x] `cargo build --release --locked`, after the gate passes.
+
+## Criterion coverage
+
+| Issue criterion | Evidence |
+| --- | --- |
+| Public read-only boundary | `examples/inspect.rs`; README compile-checked public API example; conformance companion/native-byte and archive-path replacement tests; missing archive error test. |
+| Metadata and compatibility | Conformance required-field/type/null/duplicate/version/high-minor fixtures; present `info:null`; producer values use protocol exact JSON. |
+| Fixed initial settings | Conformance complete-map/default/explicit-required/extra/module/frequency tests. |
+| ZIP index and namespace | Adversarial namespace, duplicate, flag, kind, UTF-8, local-index mismatch, ZIP64 and descriptor fixtures; scanner bounds before allocations. |
+| Incremental framing and dispatch | Conformance LF/CRLF/one-byte reads, split UTF-8, discriminators, forbidden events, malformed/duplicate JSON and unknown kind fixtures. |
+| Processing prefix | Independent example boundaries `(0,4)`, `(4,4)`, `(4,8)`; provisional-result test; log/regression/range/unclosed-block negative fixtures. |
+| Marker, suffix and completion | Empty-source/repeated-zero/source-boundary/suffix fixtures; marker failures and EOF integrity tests; README states partial consumption is not certification. |
+| Exact producer preservation | Independent documented example expectations plus coexisting fragments, null values and arbitrary-precision opaque number fixtures; exact phase integer assertions and malformed point tests. |
+| Lazy asset access | Adversarial stored/Deflate integrity, declared/actual mismatch, partial reads and local-header laziness; conformance repeated-reference conflict and exact `TEST` bytes through asset EOF. |
+| Consumed structure and setup | Adversarial overlapping consumed local ranges, CRC, stream-end and compressed trailing data tests; instrumented setup verifies journal and unused payload interior are not read. |
+| Resource profile | Scanner synthetic ZIP64 per-entry, total, metadata and 65,536-entry equality/excess fixtures; virtual overlarge archive and central-directory declarations; exact 16 MiB LF/CRLF lines; UTF-8 byte/path-depth and 128-container equality/excess tests. |
+| Errors, integration and obligations | Public structured `Error`; Rust-only fixtures and runnable example; crate README documents stage-specific validation, provisional blocks, memory bounds and caller-owned signal/runtime/materializer obligations. Full gate/release evidence is recorded below when run. |
+
+The scanner tests construct declared large sizes without allocating decoded payloads.
+The entry-count equality fixture uses a few MiB of index data, not a giant archive.
+Journal/asset readers keep 8 KiB streaming buffers; only a bounded metadata/line JSON
+value and bounded index/reference maps are retained. No whole block is collected.
+ZIP comment lookup can inspect a bounded encoded tail; a comment-free archive reads
+only its last 22 locator bytes before reading the central directory.
+
+## Validation results
+
+The full local gate and release build passed on the implementation. The new crate
+has 43 Rust tests and one compile-checked documentation example; its runnable
+`inspect` example builds with the normal all-targets checks. Existing protocol,
+CLI, dependency-policy and core-independent native tests pass. The eight existing
+hook/content-policy tests remain intentionally ignored because their source was
+not changed. No lint suppression, threshold change or hook bypass was added.
+
+## Review
+
+### Mechanical round 1
+
+All four substantive findings were accepted; none were declined.
+
+- ZIP64 descriptor width ambiguity could certify a damaged decoded-size word on an
+  empty asset. Descriptor width now follows ZIP64 extra-field presence in the local
+  or central header, without trying a short-width fallback. Signed/unsigned empty
+  stored and Deflate fixtures cover valid and damaged descriptors.
+- An EOCD-shaped value inside an opaque archive comment could shadow the real end
+  record. Candidates now require valid footer/index structure; a failed candidate
+  continues the bounded tail search. The normal comment-free case retains its
+  last-22-byte fast path and does not scan journal or payload contents.
+- ZIP64 footer values could overwrite conflicting nonsentinel legacy counts, sizes
+  or offsets. Each nonsentinel field must now agree; consistent nonsentinel legacy
+  fields remain supported when a ZIP64 locator is present.
+- Consumed-range validation scanned all earlier entries for every asset. Ordered
+  predecessor/successor checks now bound each lookup logarithmically while exact
+  reopened ranges retain the same entry identity. Neighbor, spanning-overlap,
+  adjacent-range and changed-identity fixtures cover the replacement.
+
+The damaged empty descriptor, opaque-comment EOCD and conflicting legacy count
+regressions failed before correction and pass afterward. Added size/offset,
+consistent-legacy, empty-Deflate and ordered-range regressions also pass. Focused
+validation passes 38 Rust tests and the documentation example, formatting and
+crate all-targets Clippy. The full local gate and release rebuild also passed
+after the corrections. The next mechanical round remains pending; round 1 is
+not recorded as clean.
+
+### Mechanical round 2
+
+One substantive bounded-work finding was accepted; none were declined. Prior
+round corrections were clean. Repeated EOCD-shaped values in an archive comment
+could repeatedly parse a large central directory, multiplying setup cost despite
+bounded individual allocations.
+
+Setup now limits aggregate candidate directory bytes read/parsed to an explicit
+64 MiB implementation budget. Charges occur before reads outside the recoverable
+candidate-result path, so exhaustion stops scanning immediately. A format/profile
+limit failure on a false opaque-comment candidate remains recoverable. Fallback
+also skips the fixed last-22-byte candidate when it was already attempted.
+
+Instrumented regressions use 400 complete false candidates and assert bounded
+read counts/bytes without timing assertions. Exact aggregate-budget equality
+succeeds, one-byte excess stops before the next index read, a first candidate can
+consume the full portable 64 MiB directory limit, and an oversized false candidate
+still falls back to the real index. The previous opaque-comment regressions remain
+covered. The 42 Rust tests, documentation example, full local gate and release
+rebuild pass after correction. The third, final mechanical round remains pending.
+Round 2 is not recorded as clean.
+
+### Mechanical round 3
+
+The final mechanical round was clean in all five categories: malformed-data and
+resource boundaries, architecture/invariants, inspectable errors/API, substantive
+test gaps, and scope/documentation/maintainability. All five earlier findings were
+accepted and corrected; none were declined. The aggregate work-budget correction
+and earlier ZIP64, opaque-comment and ordered-range fixes remain effective.
+The final diff includes the README status update and the documented implementation
+budget. The subsequent intent review and final owner approval are recorded below.
+
+### Intent review and final status
+
+Intent review was clean across the requested outcome and all 12 criteria, scope
+and accepted decisions, architectural invariants, validation/evidence and lifecycle
+status. No correction round was required. Accepted specifications and the protocol
+API remain unchanged. All five earlier substantive findings were accepted and
+fixed; none were declined. Mechanical round 3 and intent review are both clean.
+
+After moving the plan, the full local gate, release rebuild and runnable
+specification example passed again. The example reported blocks `0..4`, `4..4`,
+`4..8` and the finalization transition, with its referenced asset fully verified.
+
+The plan moved to `docs/plans/completed/` before final owner review. The owner
+approved the final change on 2026-10-30. Ready status, successful required `ci/full`
+on an up-to-date branch and squash merge are tracked in Pull Request #21.
+
+### Full-CI fixture portability
+
+Ready CI passed on Linux and macOS, but Windows exposed a test-fixture portability
+bug: the documentation example extractor searched for LF code fences in a CRLF
+checkout. Its panic occurred before any archive was opened.
+
+The fixture extractor now normalizes only Markdown line endings before locating
+the same metadata/journal example. An explicit CRLF document test reproduces the
+Windows failure on every platform and reuses all independent result assertions.
+It failed before the correction and passes afterward. Production reader code,
+accepted contracts, producer values and the separate wire-CRLF tests are unchanged.
+The suite now has 43 Rust tests and one documentation example. The local gate
+and release rebuild passed after correction. Focused review was clean for
+portability, regression coverage, unchanged production semantics, owner intent
+and plan accuracy. Repeated full CI remains required before squash merge.
+
+## Post-completion
+
+Final owner approval was received on 2026-10-30. Rebuild release, mark Ready,
+require successful `ci/full` on a branch up to date with `main`, then squash-merge
+and remove the merged branch. No hook bypass or lint suppression was used.
+Source metadata and safe payload publication remain separate follow-up work.

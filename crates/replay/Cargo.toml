@@ -1,0 +1,18 @@
+[package]
+name = "dmd-replay"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+dmd-protocol.workspace = true
+thiserror.workspace = true
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+crc32fast = "1.5"
+
+[dev-dependencies]
+anyhow.workspace = true
+
+[lints]
+workspace = true
