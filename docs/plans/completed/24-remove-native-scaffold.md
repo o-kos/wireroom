@@ -102,10 +102,12 @@ After the move, the full local gate, all ignored hook/policy tests and release
 rebuild passed again. Final reference checks find no live scaffold wiring, and
 the final diff preserves CLI source/tests, replay code and accepted contracts.
 
-Keep the Pull Request Draft for final owner review.
-Ready status, successful required `ci/full` on an up-to-date branch
-and squash merge remain pending explicit owner approval.
+The owner approved the final removal on 2026-10-30. Ready status, successful
+required `ci/full` on an up-to-date branch and squash merge are tracked in
+Pull Request #25.
 
 ## Post-completion
 
+Complete the release rebuild, mark Ready, require successful `ci/full` on an
+up-to-date branch, then squash-merge and remove the merged branch.
 Design native integration only when implementing actual runtime processing.
