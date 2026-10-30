@@ -161,8 +161,7 @@ test gaps, and scope/documentation/maintainability. All five earlier findings we
 accepted and corrected; none were declined. The aggregate work-budget correction
 and earlier ZIP64, opaque-comment and ordered-range fixes remain effective.
 The final diff includes the README status update and the documented implementation
-budget. The subsequent intent review is recorded below; final owner approval
-remains pending.
+budget. The subsequent intent review and final owner approval are recorded below.
 
 ### Intent review and final status
 
@@ -176,12 +175,13 @@ After moving the plan, the full local gate, release rebuild and runnable
 specification example passed again. The example reported blocks `0..4`, `4..4`,
 `4..8` and the finalization transition, with its referenced asset fully verified.
 
-The plan is now in `docs/plans/completed/` before final owner review. The library
-and runnable example are ready for review; owner approval, Ready status, successful
-required `ci/full` on an up-to-date branch and squash merge remain pending.
+The plan moved to `docs/plans/completed/` before final owner review. The owner
+approved the final change on 2026-10-30. Ready status, successful required `ci/full`
+on an up-to-date branch and squash merge are tracked in Pull Request #21.
 
 ## Post-completion
 
-Obtain final owner approval after a concrete reviewable result. Rebuild release,
-mark Ready, wait for successful required `ci/full` on a branch up to date with
-`main`, then squash-merge. No bypass or lint suppression is planned.
+Final owner approval was received on 2026-10-30. Rebuild release, mark Ready,
+require successful `ci/full` on a branch up to date with `main`, then squash-merge
+and remove the merged branch. No hook bypass or lint suppression was used.
+Source metadata and safe payload publication remain separate follow-up work.
