@@ -109,6 +109,22 @@ correction round was needed. Mechanical round 1 and intent review are both clean
 The completed plan is moved to `docs/plans/completed/` before final owner review.
 After the move, the full local gate and release rebuild passed again on Linux.
 The final diff matches the plan and preserves the architectural invariants.
+
+### Content-policy correction and final reviews
+
+The first implementation push was refused by the content policy because added
+parent-relative path text was treated as escaping the tree. No hook was bypassed.
+The replay development dependency now inherits a workspace path; README inclusion
+uses the manifest directory; fixture/document paths derive the repository root
+with Path ancestors. Only unpushed implementation history was corrected, keeping
+the committed plan first. Parser and cursor behavior did not change.
+
+The full pre-push gate, generic and local content policies, all 17 source tests
+and release build passed after correction. Mechanical round 2 and a focused
+intent follow-up were clean in every category and upheld the earlier full
+reviews. No review finding was raised, accepted or declined. Draft `ci/quick`
+passed on the implementation; the final documentation push must pass it too.
+
 Keep the Pull Request Draft for final owner review as requested.
 Ready status, successful required `ci/full` on an
 up-to-date branch and squash merge require the later owner-approved completion.
