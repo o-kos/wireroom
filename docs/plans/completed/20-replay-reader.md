@@ -55,8 +55,8 @@ UI, signal decoding/hashing and output materialization remain outside scope.
 - [x] Complete public documentation, conformance fixtures and criterion coverage.
 - [x] Complete the local validation gate and release build.
 - [x] Complete mechanical review and resolve substantive findings.
-- [ ] Complete intent review against all criteria and invariants.
-- [ ] Move this plan to `docs/plans/completed/` before final owner review.
+- [x] Complete intent review against all criteria and invariants.
+- [x] Move this plan to `docs/plans/completed/` before final owner review.
 
 ## Validation
 
@@ -161,7 +161,24 @@ test gaps, and scope/documentation/maintainability. All five earlier findings we
 accepted and corrected; none were declined. The aggregate work-budget correction
 and earlier ZIP64, opaque-comment and ordered-range fixes remain effective.
 The final diff includes the README status update and the documented implementation
-budget. Intent review and final owner approval remain pending.
+budget. The subsequent intent review is recorded below; final owner approval
+remains pending.
+
+### Intent review and final status
+
+Intent review was clean across the requested outcome and all 12 criteria, scope
+and accepted decisions, architectural invariants, validation/evidence and lifecycle
+status. No correction round was required. Accepted specifications and the protocol
+API remain unchanged. All five earlier substantive findings were accepted and
+fixed; none were declined. Mechanical round 3 and intent review are both clean.
+
+After moving the plan, the full local gate, release rebuild and runnable
+specification example passed again. The example reported blocks `0..4`, `4..4`,
+`4..8` and the finalization transition, with its referenced asset fully verified.
+
+The plan is now in `docs/plans/completed/` before final owner review. The library
+and runnable example are ready for review; owner approval, Ready status, successful
+required `ci/full` on an up-to-date branch and squash merge remain pending.
 
 ## Post-completion
 
