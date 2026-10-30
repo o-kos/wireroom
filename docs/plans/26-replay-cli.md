@@ -73,16 +73,17 @@ The source and archive libraries remain read-only boundaries.
   changing settings. A transient max request clears pending deliberate pacing even
   if another numeric speed follows in the same FIFO batch. Markers validated by
   lookahead become lifecycle transitions only when consumed by the runtime.
-- Add journal cancellation checked between records and 8 KiB refills, with a distinct
-  cancellation error. Join lookahead before terminal completion and retain any
+- Add journal cancellation checked between records, compressed refills and inflate
+  iterations, with a distinct cancellation error. Join lookahead before terminal completion and retain any
   already detected non-cancellation failure. Hashing starts after started; join it
   after cancellation, compare retained-file metadata, and omit optional diagnostics
   on fatal completion so fatal error directly precedes finished.
 - Use deterministic event-writer command injection for in-flight and finalization
-  tests, and injected elapsed durations for pacing. The real-process suite reads
-  the normative recording example from the contract instead of maintaining a copy.
-- Preserve all owner AGENTS.md edits and add runtime status updates in place. Leave
-  that entire file unstaged for the orchestrator to separate from the owner changes.
+  tests, and an injected monotonic clock in runtime accounting for pacing. The
+  real-process suite reads the normative recording example from the contract.
+- Preserve all owner AGENTS.md edits and add runtime status updates in place. Include
+  the complete active instructions in the Pull Request, including owner architecture
+  edits.
 
 ## Rejected alternatives
 
@@ -101,9 +102,8 @@ lifecycle phase.
 - [x] Implement cancellable retained-identity SHA-256 diagnostics.
 - [x] Add deterministic runtime and real-process contract/error/safety tests.
 - [x] Update active architecture/runtime documentation and CHANGELOG in English.
-- [x] Complete the full validation gate and release build.
-- [x] Leave the active plan ready for orchestrator review; defer Draft PR management
-      to the orchestrator.
+- [ ] Complete the full validation gate and release build after round 1 corrections.
+- [ ] Push corrections and update the existing Draft PR for orchestrator review.
 
 ## Validation
 
@@ -116,34 +116,42 @@ lifecycle phase.
 - [x] Cover digest match, mismatch, read/modification failure and cancellation.
 - [x] Verify pacing with deterministic elapsed-time tests, including pause and
       speed changes, max, repeated frontiers and large coordinates.
-- [x] `cargo fmt --all -- --check`
-- [x] `cargo clippy --all-targets --locked` (repository warning policy)
-- [x] `cargo test --locked`
-- [x] `cargo build --release --locked`, after the gate passes
+- [ ] `cargo fmt --all -- --check`
+- [ ] `cargo clippy --all-targets --locked` (repository warning policy)
+- [ ] `cargo test --locked`
+- [ ] `cargo build --release --locked`, after the gate passes
+
+## Mechanical review round 1 corrections
+
+All five findings were accepted; none were declined. The separate temporary-name
+cleanup correction is also in scope.
+
+- [x] Use the kernel's four-byte inode-flag output and cover its casefold mask;
+      disarm cleanup after publication and check unpublished identity before unlink.
+- [ ] Cancel inside compressed refill/inflate loops; synchronize cancellation after
+      empty-block processing begins, bound further reads, join and finish; preserve
+      detected integrity failures and validate the uncancelled compressed fixture.
+- [ ] Execute every documented example request and compare every JSON event through
+      the actual process, with speed 1 and packet-pipe boundary synchronization.
+- [ ] Exercise the production pending-clock/control path with injected monotonic time:
+      lookahead credit, pause, old-speed accounting, resume, max, repeats and stop.
+- [ ] Cover retained-source match, mismatch, read failure, modification and cancellation
+      through runtime completion; check warning frontier/order/count and terminal
+      reasons. Break stdout with active workers and verify cancellation and joins.
+- [ ] Commit all owner architecture instructions and runtime documentation together.
 
 ## Implementation validation evidence
 
-The pinned Rust 1.97.1 toolchain passes formatting, all-target Clippy, the complete
-locked workspace test suite (129 passed including doctests, eight unchanged
-policy/hook tests ignored), then the locked release build. Forty tests exercise the
-CLI runtime and process surface. No lint suppressions or threshold changes were
-introduced. The normative example runs in a real process and publishes the exact
-TEST payload, retains producer values and completes with end at frame 8.
-
-Filesystem tests ran with the host ownership view because the sandbox maps trusted
-root-owned ancestors to an unmapped UID; rejection of that mapped view is deliberate.
-The run exercises Btrfs ancestry and tmpfs output, including mandatory inode-flag
-inspection on tmpfs. Other platform/filesystem configurations are not certified;
-unsupported configurations fail closed according to the runtime guide. Registry
-access was unavailable; cached registry dependencies resolved offline. Local Git
-writes required the authorized sandbox override. Neither restriction stopped local
-implementation. Owner AGENTS.md changes and integrated runtime updates remain
-unstaged; all other task changes are committed. Push, Draft PR state and independent
-reviews remain the orchestrator's responsibility. No reviews were spawned.
+Round 1 validation is in progress. Earlier helper tests did not establish complete
+process-example, runtime-clock or retained-source diagnostic coverage; the previous
+validation claim has been replaced by the explicit corrections above. Output tests
+require the host ownership view: the sandbox's mapped ownership deliberately fails
+protected-ancestry validation. Cached dependencies are used with locked offline Cargo
+commands. No lint suppressions or threshold relaxations are permitted.
 
 ## Post-completion
 
 Independent mechanical and intent reviews are performed by the orchestrator.
 Plan completion/move, Ready state and merge remain deferred to that workflow;
 the owner explicitly requests a Draft Pull Request as this task's final state.
-Remote operations blocked by the sandbox are reported and do not stop local work.
+Push corrections through the installed hook and preserve the existing Draft state.

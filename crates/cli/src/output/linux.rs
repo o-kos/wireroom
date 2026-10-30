@@ -71,14 +71,17 @@ fn protected(dir: &File, sticky_allowed: bool) -> anyhow::Result<()> {
         matches!(kind, 0xef53 | 0x01021994 | 0x9123683e),
         "Output requires a supported local Linux filesystem"
     );
-    let mut flags: libc::c_long = 0;
-    // SAFETY: the ioctl writes one long to valid storage for a live directory.
+    let mut flags: libc::c_uint = 0;
+    // SAFETY: FS_IOC_GETFLAGS writes one c_uint to valid storage for a live directory.
     let result = unsafe { libc::ioctl(dir.as_raw_fd(), libc::FS_IOC_GETFLAGS, &mut flags) };
     ensure!(
-        result == 0 && flags & 0x40000000 == 0,
+        result == 0 && case_sensitive(flags),
         "Cannot establish case-sensitive output names"
     );
     Ok(())
+}
+fn case_sensitive(flags: libc::c_uint) -> bool {
+    flags & 0x40000000 == 0
 }
 fn private(dir: &File) -> anyhow::Result<()> {
     let metadata = dir.metadata()?;
@@ -249,6 +252,7 @@ impl Output {
 struct Stage {
     parent: File,
     name: CString,
+    unpublished: Option<File>,
     file: Option<File>,
 }
 impl Stage {
@@ -263,9 +267,15 @@ impl Stage {
             std::ffi::OsStr::from_bytes(name.as_bytes()),
             libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL,
         )?;
+        let unpublished = open_at(
+            &parent,
+            std::ffi::OsStr::from_bytes(name.as_bytes()),
+            libc::O_PATH,
+        )?;
         Ok(Self {
             parent,
             name,
+            unpublished: Some(unpublished),
             file: Some(file),
         })
     }
@@ -296,14 +306,88 @@ impl Stage {
             "Exclusive payload publication failed: {}",
             std::io::Error::last_os_error()
         );
+        self.unpublished = None;
         Ok(retained)
     }
 }
 impl Drop for Stage {
     fn drop(&mut self) {
-        // SAFETY: removes only our exclusive unpublished staging name, never a tree.
+        let Some(owned) = &self.unpublished else {
+            return;
+        };
+        let current = open_at(
+            &self.parent,
+            std::ffi::OsStr::from_bytes(self.name.as_bytes()),
+            libc::O_PATH,
+        );
+        let same = current
+            .and_then(|file| Ok((file.metadata()?, owned.metadata()?)))
+            .is_ok_and(|(a, b)| a.dev() == b.dev() && a.ino() == b.ino());
+        if !same {
+            return;
+        }
+        // Protected ancestry excludes other-user substitution between this check and unlink.
+        // Same-credential mutation remains outside the threat boundary.
+        // SAFETY: removes only the retained unpublished staging identity, never a tree.
         unsafe {
             libc::unlinkat(self.parent.as_raw_fd(), self.name.as_ptr(), 0);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn inode_flags_use_kernel_output_width_and_mask() {
+        let flags: libc::c_uint = libc::c_uint::from_ne_bytes(0x40000000u32.to_ne_bytes());
+        assert_eq!(std::mem::size_of_val(&flags), 4);
+        assert!(!case_sensitive(flags));
+        assert!(!case_sensitive(flags | 0x80));
+        assert!(case_sensitive(0x80));
+    }
+    #[test]
+    fn published_stage_never_cleans_reused_temporary_name() {
+        let root = std::env::temp_dir().join(format!(
+            "dmd-stage-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let mut stage = Stage::new(File::open(&root).unwrap()).unwrap();
+        let name = root.join(std::ffi::OsStr::from_bytes(stage.name.as_bytes()));
+        stage
+            .file
+            .as_mut()
+            .unwrap()
+            .write_all(b"published")
+            .unwrap();
+        let retained = stage.publish("result").unwrap();
+        assert!(stage.unpublished.is_none());
+        std::fs::write(&name, b"unrelated").unwrap();
+        drop(stage);
+        assert_eq!(std::fs::read(&name).unwrap(), b"unrelated");
+        assert_eq!(retained.metadata().unwrap().len(), 9);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn unpublished_stage_cleans_only_retained_identity() {
+        let root = std::env::temp_dir().join(format!(
+            "dmd-stage-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&root).unwrap();
+        for replace in [false, true] {
+            let stage = Stage::new(File::open(&root).unwrap()).unwrap();
+            let name = root.join(std::ffi::OsStr::from_bytes(stage.name.as_bytes()));
+            if replace {
+                std::fs::rename(&name, root.join("retained")).unwrap();
+                std::fs::write(&name, b"unrelated").unwrap();
+            }
+            drop(stage);
+            assert_eq!(name.exists(), replace);
+        }
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
