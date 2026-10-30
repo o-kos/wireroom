@@ -12,6 +12,8 @@ use std::{
     time::Duration,
 };
 
+#[path = "support/packet_process.rs"]
+mod packet;
 #[path = "support/archive.rs"]
 mod zip;
 use zip::archive;
@@ -180,43 +182,73 @@ fn stored(events: &[Value]) -> Vec<Value> {
         .collect()
 }
 
+fn example_json_blocks() -> Vec<Vec<Value>> {
+    let spec = fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .unwrap()
+            .join("docs/replay.md"),
+    )
+    .unwrap();
+    let example = spec
+        .split("Launch `dmd run --message-format json`")
+        .nth(1)
+        .unwrap()
+        .split("### Boundary")
+        .next()
+        .unwrap();
+    example
+        .split("```json\n")
+        .skip(1)
+        .map(|block| {
+            block
+                .split("```")
+                .next()
+                .unwrap()
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect()
+        })
+        .collect()
+}
 #[test]
 fn specification_example_preserves_payload_and_producer_values() {
     let fixture = Fixture::example();
-    let mut process = fixture.process();
-    process.send(fixture.start(false, json!("max")));
-    let events = process.finish();
-    assert_eq!(events[0]["frames"], 8);
-    assert_eq!(
-        events[0]["stream"],
-        json!({"format":"real","channels":1,"rate":[4,1]})
-    );
-    let events = stored(&events);
-    assert_eq!(
-        events
-            .iter()
-            .filter(|e| e["event"] == "progress")
-            .map(|e| e["frame"].as_u64().unwrap())
-            .collect::<Vec<_>>(),
-        [4, 4, 8]
-    );
-    let results: Vec<_> = events.iter().filter(|e| e["event"] == "result").collect();
-    assert_eq!(results[0]["record"], "finalization");
-    assert_eq!(results[0]["vendorTag"], json!({"sequence":1}));
-    assert_eq!(
-        results[1]["binary"][0]["points"],
-        json!([[1000, 0], [-500, 250]])
-    );
-    assert_eq!(results[2]["params"], json!({"confidence":0.9}));
-    assert_eq!(
-        fs::read(fixture.root.join("out/files/message.bin")).unwrap(),
-        b"TEST"
-    );
-    assert_eq!(
-        events.last().unwrap(),
-        &json!({"event":"finished","reason":"end","frame":8})
-    );
-    process.success();
+    let exchange = example_json_blocks();
+    let mut p = packet::PacketProcess::new(&fixture.root);
+    assert_eq!(p.next(), exchange[0][0]);
+    p.send(&exchange[1][0]); // Documented speed 1; the first block takes one source second.
+    assert_eq!(p.next(), exchange[2][0]);
+    assert_eq!(p.next(), exchange[2][1]);
+    // Keep the first result packet unread: progress cannot be written yet.
+    // Send pause alone, then wait until the reader consumes a SECOND command.
+    // It cannot read that command until pause has entered the bounded FIFO.
+    p.send(&exchange[3][0]);
+    p.consumed();
+    p.send(&exchange[3][1]);
+    p.consumed();
+    assert_eq!(p.next(), exchange[2][2]);
+    assert_eq!(p.next(), exchange[2][3]);
+    for command in &exchange[3][2..] {
+        p.send(command);
+    }
+    for event in &exchange[4] {
+        assert_eq!(&p.next(), event);
+    }
+    p.send(&exchange[5][0]);
+    for event in &exchange[6] {
+        assert_eq!(&p.next(), event);
+        if event["binary"][0]["type"] == "file" {
+            assert_eq!(
+                fs::read(fixture.root.join("out/files/message.bin")).unwrap(),
+                b"TEST"
+            );
+        }
+    }
+    assert!(packet::wait(&mut p.child).success());
+    let mut trailing = String::new();
+    assert_eq!(p.output.read_line(&mut trailing).unwrap(), 0);
     assert_eq!(
         fs::read(fixture.root.join("out/files/message.bin")).unwrap(),
         b"TEST"
@@ -590,22 +622,19 @@ fn preexisting_public_output_is_rejected_instead_of_changing_permissions() {
 }
 
 #[test]
-fn stdout_failure_exits_nonzero_without_waiting_for_stdin_eof() {
+fn stdout_failure_exits_nonzero_after_started_and_active_lookahead() {
     let f = Fixture::example();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_dmd"))
-        .args(["run", "--message-format", "json"])
-        .current_dir(&f.root)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let mut reader = BufReader::new(child.stdout.take().unwrap());
-    let mut hello = String::new();
-    reader.read_line(&mut hello).unwrap();
-    assert!(hello.contains("hello"));
-    drop(reader);
-    let mut input = child.stdin.take().unwrap();
-    writeln!(input, "{}", f.start(false, json!("max"))).unwrap();
-    input.flush().unwrap();
-    assert!(!child.wait().unwrap().success());
+    let mut p = packet::PacketProcess::new(&f.root);
+    assert_eq!(p.next()["event"], "hello");
+    p.send(&f.start(false, json!("max")));
+    assert_eq!(p.next()["event"], "started");
+    // A producer event proves lookahead processed a request after hashing started.
+    assert_eq!(
+        p.next(),
+        json!({"event":"log","frame":0,"level":"info","text":"Recorded run"})
+    );
+    // Drop the only read endpoint while stdin stays open and workers belong to the run.
+    let replacement = BufReader::new(fs::File::open(f.root.join("example.wav")).unwrap());
+    drop(std::mem::replace(&mut p.output, replacement));
+    assert!(!packet::wait(&mut p.child).success());
 }

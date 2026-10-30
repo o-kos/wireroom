@@ -131,7 +131,7 @@ cleanup correction is also in scope.
 - [x] Cancel inside compressed refill/inflate loops; synchronize cancellation after
       empty-block processing begins, bound further reads, join and finish; preserve
       detected integrity failures and validate the uncancelled compressed fixture.
-- [ ] Execute every documented example request and compare every JSON event through
+- [x] Execute every documented example request and compare every JSON event through
       the actual process, with speed 1 and packet-pipe boundary synchronization.
 - [x] Exercise the production pending-clock/control path with injected monotonic time:
       lookahead credit, pause, old-speed accounting, resume, max, repeats and stop.
