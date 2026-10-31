@@ -46,13 +46,13 @@ mark Ready or merge in this handoff.
 
 Pinned formatting, all-target locked Clippy, locked workspace tests and release
 build pass with cached dependencies offline. A sequential warm full test run
-observed 0.60 seconds real (0.57 user, 0.32 system), versus the recorded 9.00 seconds;
+observed 0.55 seconds real (0.50 user, 0.32 system), versus the recorded 9.00 seconds;
 this is an observation, not a benchmark. Total passing tests fall from 131 to 73:
 product checks 128 to 70 (including two doctests), workflow checks three unchanged.
 Eight conditional workflow tests remain ignored; unchanged policy/hook paths do
 not require them. CLI checks fall from 45 to 33.
 
-Physical Rust test/support lines fall from 5,637 to 2,976 (2,661 removed), including
+Physical Rust test/support lines fall from 5,637 to 2,979 (2,658 removed), including
 590 unchanged workflow support lines. Production falls from 4,021 to 3,404 (617
 removed). Count crate Rust files, including examples and existing test seams;
 classify test files and inline test modules as test/support, excluding README
