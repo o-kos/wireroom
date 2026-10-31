@@ -52,7 +52,7 @@ product checks 128 to 70 (including two doctests), workflow checks three unchang
 Eight conditional workflow tests remain ignored; unchanged policy/hook paths do
 not require them. CLI checks fall from 45 to 33.
 
-Physical Rust test/support lines fall from 5,637 to 2,979 (2,658 removed), including
+Physical Rust test/support lines fall from 5,637 to 2,984 (2,653 removed), including
 590 unchanged workflow support lines. Production falls from 4,021 to 3,404 (617
 removed). Count crate Rust files, including examples and existing test seams;
 classify test files and inline test modules as test/support, excluding README
@@ -66,3 +66,11 @@ Existing cancellation support remains; no new hooks or test framework were added
 There is no GUI crate or dependency in the tree/manifests, and active documentation
 makes no implemented-window claim. The original UI concept is unchanged. No lint
 suppression, threshold change, reviewer invocation, Ready or merge is included.
+
+Mechanical round 1 found one accepted P2: ordinary finite f64 command values could
+change during encoding and decoding. Enable the standard serde_json
+`float_roundtrip` workspace feature and add one representative `Tune` round-trip
+assertion to the existing numeric command test. No findings were declined. Exact
+u64 frame, duplicate-key and ordinary JSON checks remain in the existing suite;
+the test count is unchanged. Formatting, locked all-target Clippy, locked workspace
+tests and release build pass after the correction. Further reviews remain pending.

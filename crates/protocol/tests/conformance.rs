@@ -77,6 +77,11 @@ fn malformed_required_values_and_unsupported_numbers_fail_explicitly() {
         assert!(Event::decode(line, CONTEXT).is_err(), "{line}");
     }
     Command::decode(r#"{"command":"set_speed","speed":2.5}"#).unwrap();
+    let command = Command::Tune(94.52706955539223);
+    assert_eq!(
+        Command::decode(&command.encode().unwrap()).unwrap(),
+        command
+    );
 }
 
 #[test]
