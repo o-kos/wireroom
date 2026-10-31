@@ -45,7 +45,7 @@ embedded signatures. Pad byte values are unconstrained. Inspection reads only th
 across all payloads and padding, allocating no memory from declared sizes.
 `MAX_CHUNKS` is 65,536, including fmt/data. Equality succeeds; an additional chunk
 returns `Resource::ChunkBudget` before reading its header or scanning the remainder.
-Thus successful inspection reads at most 524,318 bytes, irrespective of payload size.
+Payload contents are skipped, irrespective of their size.
 
 ## Failures and caller obligations
 
@@ -59,9 +59,7 @@ Excluded profiles have typed `Unsupported` reasons; budget exhaustion has a type
 An opened identity survives pathname replacement on supporting platforms, but does
 not freeze externally modified contents. Callers must ensure stability throughout
 inspection and subsequent use, and handle later I/O errors. Skipped bytes are not
-read-verified. This API neither hashes nor authenticates the source. A later worker
-must hash the retained identity under caller-owned stability rules and compare the
-recording digest as needed. No SourceStamp, digest or runtime integration is provided.
+read-verified. This API neither hashes nor authenticates the source.
 Pass `source.metadata().frames` to `dmd_replay::Recording::open` or `from_reader`;
 replay/protocol contracts and their independent versions remain unchanged.
 

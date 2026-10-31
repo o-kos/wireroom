@@ -46,12 +46,14 @@ while let Some(record) = journal.next_record()? {
 # }
 ```
 
-Journal reads validate complete envelopes, producer JSON, replay depth, paths and
+Journal reads validate complete envelopes, producer JSON, paths and
 prefix/suffix structure incrementally. Prefix results/logs returned before the
 closing progress are provisional: later logs or the closing frontier can invalidate
 the block. Callers needing complete blocks must spool or buffer them with their own
 explicit resource budget. Validation/lookahead does not submit source frames.
 Unknown kinds are validated and skipped; their apparent assets are never opened.
+`Journal::set_cancellation` installs a shared atomic flag checked between records
+and at buffer refills; cancellation returns `Error::Cancelled` and poisons the reader.
 
 Payload reads check exact unchanged paths, declared descriptor size, local headers,
 consumed range overlap, decompression, actual decoded size and CRC. Journal decoding
@@ -61,31 +63,21 @@ a reader. Unseen contents remain uncertified, including when the last frontier w
 The archive identity is retained; callers must prevent concurrent modification of its
 contents if they require a stable snapshot.
 
-The portable limits in `docs/replay.md` apply. Central directory memory is bounded
-by 64 MiB; entry/reference maps by 65,536 names; streaming buffers by 8 KiB per
-reader; metadata and each journal line by 16 MiB, plus their parsed exact JSON trees.
-Archive setup also has an implementation work budget of 64 MiB of aggregate
-central-directory bytes read and parsed across all EOCD candidates. A single
-candidate can use the full portable 64 MiB directory limit. Opaque comments can
-require retrying candidates; exhausting the aggregate budget fails explicitly with
-`Error::Resource` before reading another candidate directory. The budget does not
-change the format's per-directory limit, and a profile-valid archive with many
-ambiguous comment candidates may exceed this implementation budget. The same
-last-22-byte candidate is never validated twice during fallback.
+The classic ZIP limits in `docs/replay.md` apply: no ZIP64, data descriptors,
+encryption, multipart layout or entry/archive comments. The index is bounded to 8 MiB
+and 4,096 entries; each decoded entry is at most 1 GiB. Metadata and journal lines
+are at most 16 MiB, with serde's ordinary JSON numeric/recursion profile. Streaming
+buffers are 8 KiB per reader. No whole journal/block buffer, extraction directory
+or end-candidate retry is used. Explicit limits fail with `Error::Resource`.
 
-JSON has at most 128 containers on a nesting path. No whole journal/block buffer,
-compression-ratio heuristic, or extraction directory is used. Allocation failure
-at the process allocator remains platform-defined; explicit format budgets fail
-with `Error::Resource` before trusting unchecked declared sizes.
-
-Callers own signal opening/header decoding, original-frame context, digest computation
-and its diagnostic outcome, runtime lifecycle/controls/pacing and protocol output.
-The recorded digest is validated metadata, not authentication or certification of a
-matching signal or successful playback. Output containment, ancestry/race protection,
-exclusive creation, close-before-emission, reuse and published-file lifetime all
-belong to a later materializer. Lexical paths and verified bytes establish none of
-those filesystem guarantees. Target filesystem case/Unicode equivalence depends
-on the selected output root and remains a materializer check, including on macOS;
-archive matching itself always uses exact UTF-8 names. The reader rejects known
-Windows syntax/device/component aliases on Windows. This library never writes into
-`start.output`.
+Callers own source-header decoding, original-frame context, runtime controls/pacing
+and protocol output. The recorded digest is informational, syntactically validated
+metadata; no source digest is computed or compared. Output path checks, exclusive
+publication, close-before-emission, reuse and published-file lifetime belong to the
+caller.
+The [CLI runtime](https://github.com/o-kos/wireroom/blob/main/crates/cli/README.md)
+uses portable staging under caller-selected output whose ancestry and contents
+remain stable during the run. Archive matching always uses exact UTF-8 names;
+filesystem alias collisions must fail rather than overwrite or reuse a different
+asset. The reader rejects known Windows syntax/device/component aliases on Windows.
+This library never writes into `start.output`.

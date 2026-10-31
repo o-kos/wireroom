@@ -2,7 +2,8 @@
 
 This document specifies run protocol **1.0** between `dmd` and Wireroom (`wr`).
 It is a public contract for independently supplied `dmd` implementations. One child
-process handles one run. The current CLI does not yet implement it.
+process handles one run. The replay CLI implements it with the supported configurations
+and budgets in [the runtime guide](https://github.com/o-kos/wireroom/blob/main/crates/cli/README.md).
 
 Transport, lifecycle, controls and the result envelope are defined here. Exact
 producer schemas for masks, ALE, result `params`, binary `body` and other producer
@@ -24,8 +25,9 @@ dmd run --message-format json
 
 The ordinary output mode is `human`; `json` enables this protocol. Run settings
 arrive in `start`, after version checking. Executable discovery and supplier-specific
-launch settings are outside scope. Failures must never silently change the backend;
-a native run must not silently ignore replay-only options.
+launch settings are outside scope. Failures must never silently select a different
+processing implementation. Independently supplied implementations must reject
+unsupported launch options.
 
 | Stream | Contents |
 | --- | --- |
@@ -66,6 +68,12 @@ identifiers must not contain NUL.
 | Speed | Positive finite number, or the exact string `"max"`. |
 | Parameter map | JSON object mapping parameter names to string values. No implicit conversion from numbers, booleans or null. |
 | Identifier | Nonempty opaque string; never a path. |
+
+The numeric profile is ordinary serde JSON: signed i64 and unsigned u64 integers,
+and finite binary64 (f64) numbers. Opaque producer noninteger values may be rounded
+to f64; arbitrary precision and exotic-exponent compatibility are deferred.
+Out-of-range nonfinite values are invalid. JSON containers use serde's default recursion guard (at most 127
+nested containers in this implementation). Duplicate decoded keys remain invalid.
 
 Integer fields use integer JSON tokens without fractions or exponents. Receivers
 preserve them exactly, including values above binary64's exact integer range.
@@ -319,19 +327,21 @@ component, `.` component or `..` component. It cannot denote a drive path, UNC p
 URL or an absolute path. Identifiers are never interpolated into paths without
 independent validation. These rules apply equally to replayed references.
 
-Lexical checks alone are insufficient: both writing and reading must keep the
-resolved file inside the output directory, including in the presence of symbolic
-links or equivalent filesystem indirections. An implementation must prevent a
-check/open race from escaping that directory, not merely check a string prefix.
-Reject an unsafe reference; never follow it or silently rewrite it to another file.
+The caller-selected output directory and its ancestry are trusted and stable
+throughout the run. Local processes moving directories or mutating output are
+outside this contract. Archive references remain untrusted: reject platform-invalid
+names and evident symlink or non-directory ancestors under output rather than
+following them. Ordinary filesystem checks suffice under this stability assumption.
+Reject unsafe references without rewriting them.
 
-Before emitting a descriptor, `dmd` finishes writing and closes the referenced
-regular file. Its byte length equals `size`. The file remains available and
-unchanged for the rest of the run and after process exit until the caller removes
-its output. A later result must not overwrite a file already referenced. This
-permits `wr` to open the payload as soon as the event arrives. An inability to
-write, close or safely reference it is a fatal run error. Neither participant may
-recursively delete an arbitrary directory in order to prepare or clean up output.
+Before emitting a result, `dmd` finishes writing and closes every referenced regular
+file. Each byte length equals `size`; publication at its exact path is exclusive
+and never overwrites an existing destination. A later result may reuse the same
+asset and size without rewriting. Published files remain available and unchanged
+through exit until the caller removes or modifies its output, so `wr` can open them
+as soon as the event arrives. Detected writing, validation or publication failures
+are fatal. Cleanup removes only invocation-owned unpublished temporary files;
+neither participant may recursively clear an arbitrary output directory.
 
 ### `error`
 
@@ -358,7 +368,7 @@ waits for process exit; a terminal event is not an exit status.
 | Unknown command or a known command invalid in the current lifecycle state | Emit a nonfatal `error`, subject to terminal completion superseding unprocessed commands. |
 | Invalid live setting or rejected parameter patch | Emit a nonfatal `error`; retain all previous settings. |
 | Valid `start` cannot open the recording, select the module, apply settings or prepare output | Emit a fatal `error`, then `finished` with reason `error` and frame 0; exit nonzero. No `started`. |
-| Fatal processing, invalid-result, resource or output-file failure after `started` | Stop processing, emit a fatal `error` then `finished` with reason `error`, and exit nonzero. Do not switch backends. |
+| Fatal processing, invalid-result, resource or output-file failure after `started` | Stop processing, emit a fatal `error` then `finished` with reason `error`, and exit nonzero. Do not switch processing implementations. |
 | Failure during normal or stopped finalization | Emit a fatal `error`, finish with reason `error`, and exit nonzero. |
 | stdin EOF | Process complete preceding command lines in order, then treat EOF as stop. Before start, finish at frame 0 without opening a recording. During finalization, keep finalizing. |
 | Unterminated bytes before stdin EOF | Reject the incomplete last line with a nonfatal `error`, then apply EOF as stop. Never execute the truncated command. |

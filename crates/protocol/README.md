@@ -34,13 +34,12 @@ input value, including unknown events and ignored fields, is syntax-checked and
 checked for duplicate decoded keys before shape validation. Missing, null and
 wrong-type fields remain distinct from opaque JSON nulls.
 
-`Json` retains arbitrary JSON numbers as validated `Number` tokens. It never uses
-binary64 for producer data or interprets private serde number-marker keys. It
-retains strings, array order and object keys; object order and whitespace are not
-retained. Integer wire fields are checked against their original tokens, so a
-fraction or exponent is rejected even if mathematically integral. Frequency and
-numeric speed intentionally convert to finite binary64. `Json::parse` accepts any
-JSON root; message decoding requires an object with a string discriminator.
+`Json` uses serde's ordinary JSON parser/serializer with a small duplicate-key
+visitor. Numbers are i64/u64 integers or finite f64; numeric spelling and arbitrary
+precision are not preserved. Strings, array order and ordinary producer values
+remain intact. Integer fields reject fractional/exponent values and retain exact
+u64 coordinates, including above binary64's exact integer range. `Json::parse`
+accepts any JSON root; message decoding requires an object discriminator.
 
 `validate` and `encode` check locally built messages as well as decoded ones.
 `Context::default()` checks shape and local values; `Context { frames: Some(n) }`
@@ -74,12 +73,9 @@ limit is not a total heap budget. Allocation exhaustion follows the Rust allocat
 behavior. Standalone message/JSON parsing and string encoding APIs do not enforce
 the transport byte limit; use `Reader` and `Writer` for bounded transport.
 
-There is an explicit implementation budget of **256 nested JSON containers**,
-counting the message root when present. Scalars add no container level. Parsing,
-validation and serialization return `ValidationError::DepthLimit` above this budget;
-no implicit serde recursion limit applies to producer containers. This budget is
-independent of replay archive/journal limits. The run codec imports no replay
-resource profile.
+Parsing uses serde_json's default recursion guard; locally built JSON also checks
+the conservative `MAX_DEPTH` budget of 127 containers before serialization. This
+budget is independent of replay archive limits.
 
 Callers still own lifecycle ordering, FIFO acknowledgement tracking, monotonic
 frontiers, equality with the current frontier, command execution, finalization,

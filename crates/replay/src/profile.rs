@@ -1,9 +1,10 @@
 use crate::Error;
 use dmd_protocol::Json;
 
-pub(crate) const ARCHIVE: u64 = 1 << 40;
-pub(crate) const DIRECTORY: u64 = 1 << 26;
-pub(crate) const ENTRY: u64 = 1 << 36;
+pub(crate) const ARCHIVE: u64 = u32::MAX as u64 - 1;
+pub(crate) const DIRECTORY: u64 = 8 << 20;
+pub(crate) const ENTRY: u64 = 1 << 30;
+pub(crate) const ENTRIES: u64 = 4096;
 pub(crate) const JSON_BYTES: usize = 1 << 24;
 
 pub(crate) fn limit(value: u64, maximum: u64, name: &'static str) -> Result<(), Error> {
@@ -54,31 +55,6 @@ fn reserved_port(stem: &str) -> bool {
     })
 }
 pub(crate) fn json(text: &str) -> Result<Json, Error> {
-    // Bound depth before the shared parser allocates nested containers.
-    let mut depth = 0usize;
-    let mut quoted = false;
-    let mut escaped = false;
-    for byte in text.bytes() {
-        if quoted {
-            if escaped {
-                escaped = false;
-            } else if byte == b'\\' {
-                escaped = true;
-            } else if byte == b'"' {
-                quoted = false;
-            }
-        } else {
-            match byte {
-                b'"' => quoted = true,
-                b'[' | b'{' => {
-                    depth += 1;
-                    limit(depth as u64, 128, "JSON depth")?;
-                }
-                b']' | b'}' => depth = depth.saturating_sub(1),
-                _ => {}
-            }
-        }
-    }
     Ok(Json::parse(text)?)
 }
 

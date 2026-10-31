@@ -22,6 +22,8 @@ pub fn companion_path(signal: impl AsRef<Path>) -> PathBuf {
 /// Inspectable failures; no error requires parsing diagnostic text.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("journal reading cancelled")]
+    Cancelled,
     #[error("I/O: {0}")]
     Io(#[from] std::io::Error),
     #[error("invalid archive: {0}")]

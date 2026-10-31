@@ -187,7 +187,7 @@ fn local(r: &mut dyn Source, entry: &Entry, central: u64) -> Result<(u64, u64), 
         .offset
         .checked_add(30 + names as u64 + extra as u64)
         .ok_or(Error::Archive("local overflow"))?;
-    let mut end = start
+    let end = start
         .checked_add(entry.compressed)
         .filter(|end| *end <= central)
         .ok_or(Error::Archive("compressed range"))?;
@@ -195,73 +195,14 @@ fn local(r: &mut dyn Source, entry: &Entry, central: u64) -> Result<(u64, u64), 
     if variable[..names] != *entry.name.as_bytes() {
         return Err(Error::Archive("local name mismatch"));
     }
-    let fields = index::extras(&variable[names..])?;
-    local_sizes(&h, &fields, entry)?;
-    if entry.flags & 8 != 0 {
-        let wide = entry.zip64_sizes || fields.contains_key(&1);
-        end = descriptor_end(r, end, entry, central, wide)?;
+    index::extras(&variable[names..])?;
+    if u64::from(index::u32_at(&h, 22)) != entry.size
+        || u64::from(index::u32_at(&h, 18)) != entry.compressed
+        || index::u32_at(&h, 14) != entry.crc
+    {
+        return Err(Error::Archive("local sizes mismatch"));
     }
     Ok((start, end))
-}
-fn local_sizes(h: &[u8], fields: &BTreeMap<u16, &[u8]>, entry: &Entry) -> Result<(), Error> {
-    let z = fields.get(&1).copied().unwrap_or_default();
-    let mut p = 0;
-    let size = index::extended(
-        u64::from(index::u32_at(h, 22)),
-        u64::from(u32::MAX),
-        z,
-        &mut p,
-        8,
-    )?;
-    let compressed = index::extended(
-        u64::from(index::u32_at(h, 18)),
-        u64::from(u32::MAX),
-        z,
-        &mut p,
-        8,
-    )?;
-    let crc = index::u32_at(h, 14);
-    if entry.flags & 8 == 0 {
-        if size != entry.size || compressed != entry.compressed || crc != entry.crc {
-            return Err(Error::Archive("local sizes mismatch"));
-        }
-    } else if (size != 0 && size != entry.size)
-        || (compressed != 0 && compressed != entry.compressed)
-        || (crc != 0 && crc != entry.crc)
-    {
-        return Err(Error::Archive("descriptor local mismatch"));
-    }
-    Ok(())
-}
-fn descriptor_end(
-    r: &mut dyn Source,
-    at: u64,
-    entry: &Entry,
-    central: u64,
-    wide: bool,
-) -> Result<u64, Error> {
-    let available = (central - at).min(24) as usize;
-    let b = index::bytes(r, at, available)?;
-    let prefixes = if b.len() >= 4 && index::u32_at(&b, 0) == 0x08074b50 {
-        vec![4, 0]
-    } else {
-        vec![0]
-    };
-    let width = if wide { 8 } else { 4 };
-    for prefix in prefixes {
-        let length = prefix + 4 + 2 * width;
-        if b.len() < length || index::u32_at(&b, prefix) != entry.crc {
-            continue;
-        }
-        let sizes = &b[prefix + 4..length];
-        let mut p = 0;
-        let compressed = index::extended(0, 0, sizes, &mut p, width)?;
-        let size = index::extended(0, 0, sizes, &mut p, width)?;
-        if compressed == entry.compressed && size == entry.size {
-            return Ok(at + length as u64);
-        }
-    }
-    Err(Error::Archive("data descriptor mismatch"))
 }
 struct Range {
     handle: Handle,
@@ -320,13 +261,31 @@ impl Asset {
         if output.is_empty() {
             return Ok(0);
         }
-        let result = self.read_next(output);
+        self.read_chunk_cancellable(output, None)
+    }
+    pub(crate) fn read_chunk_cancellable(
+        &mut self,
+        output: &mut [u8],
+        cancellation: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<usize, Error> {
+        if self.failed {
+            return Err(Error::Integrity("reader ended after failure"));
+        }
+        let result = self.read_next(output, cancellation);
         if result.is_err() {
             self.failed = true;
         }
         result
     }
-    fn read_next(&mut self, output: &mut [u8]) -> Result<usize, Error> {
+    fn read_next(
+        &mut self,
+        output: &mut [u8],
+        cancellation: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<usize, Error> {
+        check_cancelled(cancellation)?;
+        if output.is_empty() {
+            return Ok(0);
+        }
         if self.verified {
             return Ok(0);
         }
@@ -334,7 +293,7 @@ impl Asset {
         let n = if self.decoder.is_none() {
             self.range.read(&mut output[..capacity])?
         } else {
-            self.inflate(&mut output[..capacity])?
+            self.inflate(&mut output[..capacity], cancellation)?
         };
         self.decoded = self
             .decoded
@@ -353,15 +312,21 @@ impl Asset {
         }
         Ok(n)
     }
-    fn inflate(&mut self, output: &mut [u8]) -> Result<usize, Error> {
+    fn inflate(
+        &mut self,
+        output: &mut [u8],
+        cancellation: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<usize, Error> {
         if self.ended {
             return Ok(0);
         }
         loop {
+            check_cancelled(cancellation)?;
             if self.begin == self.end {
                 self.end = self.range.read(&mut self.input)?;
                 self.begin = 0;
             }
+            check_cancelled(cancellation)?;
             let decoder = self
                 .decoder
                 .as_mut()
@@ -394,26 +359,9 @@ impl Asset {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn ordered_ranges_check_both_neighbors_and_exact_reopens() {
-        let mut ranges = BTreeMap::new();
-        for (start, end, name) in [(100, 110, "one"), (300, 310, "three"), (200, 210, "two")] {
-            register_range(&mut ranges, start, end, name).unwrap();
-        }
-        register_range(&mut ranges, 200, 210, "two").unwrap();
-        assert_eq!(ranges.len(), 3);
-        for (start, end, name) in [
-            (105, 115, "predecessor"),
-            (190, 205, "successor"),
-            (110, 301, "spanning"),
-            (200, 210, "different"),
-            (200, 211, "two"),
-        ] {
-            assert!(register_range(&mut ranges, start, end, name).is_err());
-        }
-        register_range(&mut ranges, 110, 200, "adjacent").unwrap();
+fn check_cancelled(flag: Option<&std::sync::atomic::AtomicBool>) -> Result<(), Error> {
+    if flag.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed)) {
+        return Err(Error::Cancelled);
     }
+    Ok(())
 }

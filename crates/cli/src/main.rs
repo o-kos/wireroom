@@ -1,14 +1,10 @@
-use std::path::PathBuf;
+mod lookahead;
+mod output;
+mod pacing;
+mod runtime;
 
 use clap::{Parser, Subcommand, ValueEnum};
-
-#[derive(Clone, Copy, Debug, Default, ValueEnum)]
-enum Backend {
-    #[default]
-    Auto,
-    Native,
-    Replay,
-}
+use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(version, about = "Inspect and process recorded signals")]
@@ -16,20 +12,25 @@ struct Cli {
     /// Module and recording search directories, separated by semicolons.
     #[arg(short = 's', long, global = true, value_delimiter = ';')]
     search_path: Vec<PathBuf>,
-    /// Select the execution backend.
-    #[arg(long, global = true, value_enum, default_value = "auto")]
-    backend: Backend,
-    /// Write events to this path.
+    /// Write events to this path (not implemented).
     #[arg(long, global = true)]
     events: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
-
+#[derive(Clone, Debug, Default, ValueEnum)]
+enum MessageFormat {
+    #[default]
+    Human,
+    Json,
+}
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Run signal processing.
-    Run,
+    /// Replay a recorded run.
+    Run {
+        #[arg(long, value_enum, default_value = "human")]
+        message_format: MessageFormat,
+    },
     /// Check results.
     Check,
     /// Inspect module information.
@@ -43,61 +44,30 @@ enum Command {
     /// Record a run.
     Record,
 }
-
-impl Command {
-    fn name(&self) -> &'static str {
-        match self {
-            Self::Run => "run",
-            Self::Check => "check",
-            Self::Info => "info",
-            Self::List => "list",
-            Self::Mask => "mask",
-            Self::Convert => "convert",
-            Self::Record => "record",
-        }
-    }
-}
-
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    anyhow::bail!("{}: not implemented", cli.command.name());
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn global_options_parse_before_and_after_command() {
-        let cli = Cli::try_parse_from([
-            "dmd",
-            "-s",
-            "signals;modules",
-            "run",
-            "--backend",
-            "replay",
-            "--events",
-            "events",
-        ])
-        .unwrap();
-        assert_eq!(
-            cli.search_path,
-            [PathBuf::from("signals"), PathBuf::from("modules")]
-        );
-        assert!(matches!(cli.backend, Backend::Replay));
-        assert_eq!(cli.events, Some(PathBuf::from("events")));
-        let cli = Cli::try_parse_from(["dmd", "list"]).unwrap();
-        assert!(matches!(cli.backend, Backend::Auto));
+    if !cli.search_path.is_empty() {
+        anyhow::bail!("--search-path: not implemented");
     }
-
-    #[test]
-    fn invalid_surface_is_rejected() {
-        for args in [
-            vec!["dmd"],
-            vec!["dmd", "unknown"],
-            vec!["dmd", "--backend", "other", "run"],
-        ] {
-            assert!(Cli::try_parse_from(args).is_err());
-        }
+    if cli.events.is_some() {
+        anyhow::bail!("--events: not implemented");
+    }
+    match cli.command {
+        Command::Run {
+            message_format: MessageFormat::Json,
+        } => runtime::run(),
+        Command::Run { .. } => anyhow::bail!("run: not implemented for human output"),
+        command => anyhow::bail!(
+            "{}: not implemented",
+            match command {
+                Command::Check => "check",
+                Command::Info => "info",
+                Command::List => "list",
+                Command::Mask => "mask",
+                Command::Convert => "convert",
+                Command::Record => "record",
+                Command::Run { .. } => "run",
+            }
+        ),
     }
 }

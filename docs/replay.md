@@ -1,13 +1,14 @@
 # Replay recording contract
 
-This document specifies recording format **1.0**, for replay through
-[run protocol 1.0](protocol.md). It defines data and behavior, not an implemented
-reader or writer. One recording represents one normally completed run with fixed
+This document specifies the narrowed pre-release recording format **1.0**, for replay through
+[run protocol 1.0](protocol.md). It defines data and behavior. The [runtime guide](https://github.com/o-kos/wireroom/blob/main/crates/cli/README.md)
+documents the implemented CLI, supported configurations and additional budgets. One recording represents one normally completed run with fixed
 results. Recordings of stopped or failed source runs are outside version 1.
 The recorded effective tuning and parameters are fixed throughout that source run;
 runs that changed them are outside version 1. Replay reads source metadata without
 a native signal core and never decodes again.
-`wr` still launches `dmd`; this contract does not change the native boundary.
+`wr` launches the selected `dmd` executable; replay and core are separate
+implementations of the application.
 
 The general result-directory layout, discovery, recording tools, C ABI and producer
 schemas are outside scope. Masks, module info, ALE, result `params`, binary `body`
@@ -20,7 +21,7 @@ The entry point is `start.recording`, a signal file. Append the literal suffix
 `.replay` to its complete pathname to find its companion ZIP: `signal.wav` uses
 `signal.wav.replay`, not `signal.replay` or `signal.wav.replay.zip`. Both files are
 required. Relative launch paths have the protocol's working-directory meaning.
-There is no fallback search or alternate backend on failure. The archive contains
+There is no fallback search or alternate processing implementation on failure. The archive contains
 all replay assets; it must not refer to another external file besides this signal.
 
 Read byte size, real/IQ format, channels, rational frame rate and total frames from
@@ -81,7 +82,7 @@ additional JSON values or trailing non-whitespace are invalid.
 | `format` | Exact string `"dmd-replay"`. |
 | `version` | Recording version object. |
 | `protocol` | Stored run-protocol version object. |
-| `signal_sha256` | String of exactly 64 lowercase hexadecimal digits: SHA-256 of every byte of the signal file, including its headers. |
+| `signal_sha256` | Informational producer digest: exactly 64 lowercase hexadecimal digits. The reader checks syntax only; source correspondence is unverified. |
 | `module` | Nonempty identifier string, never a path. |
 | `info` | Complete producer module-info JSON value, including its mask and parameter definitions, with no selective omission. Its shape is deferred. |
 | `mask` | Producer mask object used by this run, copied without restructuring for `started.mask`. |
@@ -102,11 +103,12 @@ only in `params` and must be supplied explicitly at start. The actual value may
 differ from its default. Neither replay bindings nor deferred schemas permit
 converting parameter strings to numbers or replacing producer JSON values.
 
-Preservation means JSON value and array order, exact integers, strings (including
+Preservation means JSON value and array order, exact i64/u64 integers, strings (including
 text fragments), result order and raw payload bytes. It does not require identical
 whitespace, object-member order or equivalent number spelling. Do not round
-integers through binary64. Opaque JSON numbers must retain their exact value;
-re-encoding cannot silently lose precision. No `null` substitutes for required
+i64/u64 integers through binary64. Opaque numbers use the ordinary JSON numeric
+profile in the run protocol: i64/u64 integers and finite f64 values. Arbitrary
+precision and exotic-exponent compatibility are deferred. No `null` substitutes for required
 objects, strings or maps; `info` and opaque producer values may themselves be null
 if that is what the producer supplies.
 
@@ -186,7 +188,6 @@ a marker before source exhaustion, or a non-N suffix progress is fatal.
 | Finalization marker | Internal lifecycle transition only; never a protocol event. |
 | File assets and inline phase | Materialize files before their descriptors; retain inline points without re-quantization, normalization, clipping or thinning. |
 | Original lifecycle, controls, timing, stderr | Not stored. Generate the current invocation's `hello`, `started`, acknowledgements and single `finished`; do not reproduce original machine delays or raw stderr. |
-| Background verification diagnostic | Generate a `log` at `warning` level if needed, after `started` and before `finished`; it may interleave without changing the relative order of stored entries. |
 
 ## Settings, pacing and controls
 
@@ -320,30 +321,32 @@ For consumed entries, validate local headers against the central directory, boun
 compressed ranges within the archive, reject overlapping consumed entry ranges,
 and validate decompression, decoded size and ZIP CRC-32 through entry EOF. Do not
 trust only the central-directory size or a descriptor's size. An invalid archive
-structure is fatal, not a SHA warning.
+structure is fatal, not an informational metadata outcome.
 
-Version 1 accepts only single-disk, unencrypted ZIP using stored (method 0) or
-Deflate (method 8) entries. ZIP64 and data descriptors are allowed; ZIP64 counts
-and offsets must be checked without truncation. Reject unsupported methods,
-encryption or multi-disk layouts during index setup. ZIP metadata extra fields
-are not replay extension fields: ignore well-framed unknown ZIP extras, reject
-malformed ones. No archive extraction is needed to read metadata or journal.
+Version 1 accepts a small classic ZIP profile: single-disk, unencrypted, stored
+(method 0) or Deflate (method 8), with UTF-8 regular-file entries. ZIP64, data
+descriptors, multipart archives and entry/archive comments are unsupported.
+Sizes and CRCs must be present in local headers. Reject unsupported central structures at setup;
+local header/content consistency for payloads is checked when opened. Unknown
+well-framed ZIP extras are ignored; ZIP64 extras and malformed extras are rejected.
+The central directory must end immediately before the fixed 22-byte end record.
+There is no end-candidate retry or extraction.
 
 The following hard limits define the portable version-1 profile. Count bytes after
 decompression unless specified otherwise. Equality with a limit is permitted.
 
 | Resource | Limit |
 | --- | --- |
-| Archive byte size | 1 TiB (1,099,511,627,776 bytes). |
-| Central directory size | 64 MiB (67,108,864 bytes). |
-| Number of entries | 65,536, including extensions. |
+| Archive byte size | 4,294,967,294 bytes. |
+| Central directory size | 8 MiB (8,388,608 bytes). |
+| Number of entries | 4,096, including extensions. |
 | UTF-8 entry name or descriptor path | 4,096 bytes each; archive prefix counts for an entry name. |
 | Path depth | 64 components, including archive prefixes. |
 | `metadata.json` | 16,777,216 bytes. |
 | Journal line | 16,777,216 bytes, excluding terminator. |
-| JSON nesting | 128 object/array levels, counting the root as level 1. |
-| Any single entry, including journal | 64 GiB (68,719,476,736 bytes). |
-| Sum of declared uncompressed entry sizes | 1 TiB, including ignored entries. |
+| JSON nesting | 127 object/array levels, counting the root as level 1. |
+| Any single entry, including journal | 1 GiB (1,073,741,824 bytes). |
+| Sum of declared uncompressed entry sizes | 4,294,967,294 bytes, including ignored entries. |
 
 Enforce declared limits at index/setup time where available and decoded limits
 incrementally; never allocate directly from an unchecked ZIP size or JSON count.
@@ -354,47 +357,35 @@ resource budgets (including output space or spool space); exhaustion is a fatal
 resource failure at the point detected, not silent truncation. It must document
 those budgets, not claim every profile-valid recording will run with any resources.
 
-Before emitting any result containing file descriptors, safely materialize all of
-its required files and close them successfully. Check existing ancestors relative
-to an opened output-directory handle, create missing directories without following
-links, and create files exclusively. Use handle-relative no-follow operations or
-an equivalent platform mechanism covering every component, including rename or
-publication steps. Reject symlinks, junctions, mount/reparse indirections escaping
-the root, and hard-link/file alias hazards; a pre-existing destination is a
-collision, even if its bytes happen to match. Validate the output root during setup
-and retain its directory identity. A string-prefix containment check, or a
-canonicalize-then-open check, cannot prevent a concurrent replacement race.
-Holding a child-directory handle alone also does not prevent that directory from
-being moved outside the root. The implementation must protect traversed ancestry
-against relocation during writes/publication (for example through exclusive
-ownership and access control), or reject output where it cannot establish that
-protection. Handle-relative access must not become permission to write through a
-relocated ancestor. External caller modification of published files remains outside
-the stability guarantee below.
+The caller-selected output directory and its ancestry are trusted and stable
+throughout the run. Local processes relocating directories or mutating output are
+outside the contract. Archive paths and bytes remain untrusted. Validate the output
+root during setup. Under output, reject evident symlink/junction or non-directory
+payload ancestors and existing destinations, even if existing bytes match.
+Ordinary filesystem checks suffice under the stability assumption; do not silently
+rewrite a descriptor path to work around a conflict.
 
-Write into an exclusively owned file or staging file under that root, check decoded
-size and CRC, finish writing and close successfully, then publish without replacing
-any destination. Publication must be race-safe and exclusive. Do not emit the
-result until every referenced regular file is ready at its exact path. On reuse of
-an already emitted path, reuse only the same previously materialized asset and
-size, without rewriting; reject conflicting references. Protect identity when
-checking/reopening that path, and fail on external replacement rather than emitting
-a reference to an unrelated file. Aliasing to another path is not permission to
-reuse it. File stability is the replay writer's obligation; caller deletion or
-modification after publication is outside the recording guarantee.
+Stream each required asset into an exclusively owned staging file under its
+destination parent, verify exact decoded size and CRC, finish writing and close the
+writing handle, then publish at the exact path without overwriting any destination.
+Do not emit a result until all its referenced regular files are ready. Reuse only
+the same exact previously materialized archive asset and size, without rewriting;
+reject conflicting references. A filesystem alias to another path does not permit
+reuse. These requirements do not imply crash durability or an atomic multi-file
+transaction.
 
-Retain published files unchanged through and after exit. On failure, remove only
-unpublished temporary files demonstrably owned by this invocation, using the same
-safe handles; already published results remain available. Never clear output or
-recursively delete an arbitrary directory, even if setup or verification fails.
-An output directory that cannot support safe exclusive operations is unusable.
+Keep published files unchanged through and after exit until the caller removes or
+modifies output. A failed result may leave files already published before its
+failure. Cleanup removes only invocation-owned unpublished temporary files; never
+clear output or recursively delete an arbitrary directory. Failure to prepare
+output or perform exclusive publication is an explicit error.
 
 ## Lazy validation and failure classification
 
 Before `started`, open the signal and companion, derive source metadata, inspect
 the bounded ZIP index and its names/types/declared limits, read and validate all
 metadata including its CRC, check version compatibility and settings, open the
-journal for streaming, and prepare safe output access. Index enumeration is
+journal for streaming, and prepare output access. Index enumeration is
 required structural work; it is not a scan/decompression of every archive member.
 Do not scan the whole journal, extract all payloads or hash the whole signal as a
 startup prerequisite. Content/local-header checks for unopened payloads are lazy.
@@ -408,22 +399,11 @@ An early stop need not inspect unread journal content, unused payloads or the
 missing marker in an unread suffix. It does not certify the full recording valid.
 No requirement for lazy access permits ignoring invalid data already encountered.
 
-Verify SHA-256 of the opened signal's entire contents in background after startup,
-without blocking controls. A mismatch emits a generated warning log and continues.
-An I/O error affecting only hashing, inability to obtain a stable digest (including
-signal modification detected during hashing), or inability to finish before the
-run terminates also emits a warning. Do not delay terminal completion just to
-finish hashing; cancel/join the worker and emit a warning before `finished` if no
-conclusive result is available. A matching completed digest needs no event. Emit
-at most one verification outcome warning per invocation. Use the current submitted
-frontier as its `frame`. Do not schedule a late worker write to stdout. Fatal
-completion takes precedence: emit any pending warning before the fatal error,
-or omit it so that the fatal error is immediately followed by `finished`.
-
-The digest is diagnostic, not authentication or mandatory correspondence proof.
-A syntactically invalid `signal_sha256` is malformed metadata and fatal; a valid
-but differing digest is only a warning. Required source-header reads and replay
-asset reads remain fatal even if an independent background hash also fails.
+Source SHA-256 verification is deferred. `signal_sha256` is checked only for
+syntactic validity; playback performs no full source hash, comparison or related
+warning. A malformed digest remains a metadata error. Required source-header reads
+and replay asset integrity checks remain fatal on failure. Retaining source/archive
+identities does not freeze contents; callers must keep them stable during use.
 
 | Condition | Detection stage and observable behavior |
 | --- | --- |
@@ -433,13 +413,12 @@ asset reads remain fatal even if an independent background hash also fails.
 | Invalid/missing newline, JSON/type/range error, forbidden stored event, invalid block order, premature/duplicate marker | Fatal when read: before `started` if encountered opening required data, otherwise fatal `error` then `finished(error,F)`, nonzero exit. |
 | Journal EOF without marker, unterminated block, journal CRC/size failure or truncated compressed bytes | Fatal when encountered; normal end is never inferred merely from reaching source frame N. |
 | Missing referenced asset, decoded size mismatch, CRC/decompression/read failure, unsafe descriptor path, invalid phase points | Fatal when required/decoded, before its result is emitted. Previously emitted results remain valid. |
-| Output collision, filesystem indirection/race, write/close/publication failure, resource exhaustion | Fatal when detected; no partial result descriptor and no unrelated overwrite. |
+| Output collision, symlink/non-directory ancestor, detected write/validation/publication failure, resource exhaustion | Fatal when detected; no partial result descriptor and no unrelated overwrite. |
 | Invalid live tune/patch or command | Nonfatal command `error`, no state change, continue playback. |
-| Valid digest differs or background verification cannot complete | `log` with `level: "warning"`, continue playback; never an unsolicited nonfatal `error`. |
 | stdout failure | Stop work, stderr diagnostic if possible, nonzero exit; no promise of terminal delivery. |
 
 There is no repair, dropped result, rewritten unsafe path, inferred marker,
-reordered producer output or switch to native processing on any failure.
+reordered producer output or switch to another implementation on any failure.
 
 ## Complete illustrative recording and playback
 
@@ -552,9 +531,8 @@ Suppose `pause` is read before the next block is submitted. **stdin:**
 ```
 
 Before the file-bearing result appears, `out/files/message.bin` is a closed regular
-file containing exactly `TEST`; it remains unchanged after exit 0. This exchange
-assumes background hashing completed successfully; if it did not, a warning log
-would appear before `finished`. `wr` drains stderr and waits for exit too.
+file containing exactly `TEST`; it remains unchanged after exit 0. A client drains
+stderr and waits for exit too.
 
 ### Boundary, invalid-data and control cases
 
@@ -563,7 +541,7 @@ to its successful exchange. Fatal examples assume stdout works.
 
 | Case | Expected acceptance or behavior |
 | --- | --- |
-| Empty supported signal, N = 0; journal is only the finalization marker plus LF | Valid. Generate `started(frame=0)` then `finished(end,0)` after marker/EOF validation, with no division by zero. Adjust the diagnostic digest for that signal. |
+| Empty supported signal, N = 0; journal is only the finalization marker plus LF | Valid. Generate `started(frame=0)` then `finished(end,0)` after marker/EOF validation, with no division by zero. The recorded digest remains informational. |
 | Empty source with two `progress(0)` blocks, marker, result `samples:[0,0]`, then `progress(0)` | Valid repeated boundaries and empty finalization span. Preserve all three progress events. |
 | Example's overlapping `[0,4]`, `[2,4]`, `[0,8]` spans | Valid; preserve order and both phase and file descriptors. Spans do not drive timing. |
 | Prefix progress 4, 4, 8, 8, marker | Valid; keep both N-frontier blocks before normal finalization. |
@@ -575,16 +553,15 @@ to its successful exchange. Fatal examples assume stdout works.
 | Higher minor, unknown metadata field, opaque extra result key, `{"record":"vendor-note","value":7}` at a boundary | Valid ignorable extension except the result key, which is preserved. Required fields remain validated. |
 | Unknown root ZIP entry, duplicate `metadata.json`, a payload entry name containing a parent-directory component, a symlink entry, or an encrypted member | Fatal setup index failure, even if the member would be unused. |
 | Descriptor `files/missing.bin`, CRC-damaged required asset, size 5 for the four-byte asset, or a descriptor path beginning with a parent-directory component | Fatal when the result/asset is read; emit no such result. |
-| Existing `out/files/message.bin`, an ancestor symlink/junction, case alias collision, or directory replacement race | Fatal before descriptor emission; do not overwrite, follow or rename to work around it. |
+| Existing `out/files/message.bin`, a payload ancestor symlink/junction or non-directory, or a filesystem alias collision | Fatal before descriptor emission; do not overwrite, follow or rename to work around it. |
 | Missing unused payload contents or an unread corrupt journal suffix on early stop | No eager verification obligation. An indexed structural defect already detected still fails; an early stop does not certify unseen contents. |
 | Declared size/entry-count limit exceeded | Fatal setup failure. Actual decompression exceeding limits, spool exhaustion or full output disk is fatal when encountered. |
-| Valid digest differs, or background hash read fails/cannot finish | Warning log only, playback and its terminal reason continue. Required signal-header or asset failure is separately fatal. |
 | Start with `params:{}` (defaults are raw), another module, frequency 1 or an extra parameter | Fatal setup mismatch. Explicit `mode:fec` with the recorded module and frequency succeeds. |
 | No-op pause/resume, unchanged speed, tune 0, patch `{}` or `{"mode":"fec"}` | Successful full state snapshot, including while paused where applicable. Resume/pause still set their respective states. |
 | Patch combines `mode:fec` with an unknown name, tune 1, speed 0, unknown command/field | One nonfatal error per rejected command, atomically unchanged state. |
 | Pause arrives during a block | Complete that block through progress before paused acknowledgement. No subsequent block is submitted until resume. |
 | Pause/speed change arrives halfway through the wait for frontier 8 from 4 | Commands respond before submission. Pause freezes the remaining budget; at speed 2, half a source-second still unconsumed takes 0.25 wall seconds after resume. |
-| Stop during the wait for the first block | Cancel it; `finished(stopped,0)`, no stored block output or full-run suffix. A verification warning may precede completion. |
+| Stop during the wait for the first block | Cancel it; `finished(stopped,0)`, no stored block output or full-run suffix. |
 | Stop while the first block is in flight | Emit its log, result and progress 4, then `finished(stopped,4)`; no phase block or finalization file. |
 | Stop/EOF while paused at 4 | Immediate `finished(stopped,4)` without another block or full-run suffix. |
 | Stop accepted with the block ending at 8 in flight | Complete it, drain N-frontier remainder and full-run suffix without pacing, then `finished(stopped,8)`. |

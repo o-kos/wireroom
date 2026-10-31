@@ -217,17 +217,17 @@ if save_results {
 Write code comments only when intent is not evident from the code, and keep them
 concise.
 
-## Future native integration
+## Runtime architecture
 
-Current workspace builds and tests require only Rust and the platform's ordinary Rust
-linker, with no Python, CMake, C++ compiler or signal core. There is no native Cargo
-feature or ABI contract in the current workspace. The CLI retains its backend parser;
-runtime execution is not implemented.
-
-Native processing remains future work. Agree its integration boundary alongside an
-actual implementation, preserving Rust-only replay builds and the architectural
-invariants in `AGENTS.md`, including explicit errors, source-frame positions, path
-safety and ownership and unwind safeguards at any future FFI boundary.
+The workspace requires only Rust and the platform's ordinary Rust linker. It develops
+the replay implementation of `dmd`; a core implementation is a separate executable
+implementing the same CLI and run protocol. There is no native Cargo feature, C ABI,
+general backend interface or automatic implementation selection. `wr` remains
+unimplemented. Source hashing is deferred; replay uses the classic ZIP and ordinary
+JSON profiles in the active specs. Replay trusts caller-selected output and its
+ancestry to stay stable during the run; archive paths and payloads remain untrusted. Portable staging
+publishes without overwrite before descriptors. See `crates/cli/README.md` for runtime
+behavior and resource limits.
 
 ## 4. External review
 
