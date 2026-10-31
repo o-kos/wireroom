@@ -23,3 +23,13 @@ impl AssetSource for Assets {
         Ok(entries)
     }
 }
+
+pub fn window_icon() -> anyhow::Result<std::sync::Arc<image::RgbaImage>> {
+    let bytes = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/assets/wireroom-window.png"
+    ));
+    Ok(std::sync::Arc::new(
+        image::load_from_memory_with_format(bytes, image::ImageFormat::Png)?.to_rgba8(),
+    ))
+}

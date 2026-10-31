@@ -17,10 +17,13 @@ const TITLE: &str = "Wireroom";
 pub const APP_ID: &str = "io.github.o_kos.wireroom";
 gpui_kit::actions!(shell, [OpenMenu]);
 
-pub fn run(store: Store, mut saved: State, notice: Option<String>) {
+pub fn run(store: Store, mut saved: State, notice: Option<String>) -> std::process::ExitCode {
+    let failed = std::rc::Rc::new(std::cell::Cell::new(false));
+    let failure = failed.clone();
     gpui_kit::application()
         .with_assets(crate::assets::Assets)
         .run(move |cx| {
+            cx.set_app_identity(APP_ID, TITLE);
             gpui_kit::init(cx);
             cx.bind_keys([KeyBinding::new("f10", OpenMenu, Some("Shell"))]);
             crate::theme::install(mode(saved.appearance, cx.window_appearance()), cx);
@@ -47,7 +50,15 @@ pub fn run(store: Store, mut saved: State, notice: Option<String>) {
                 let placement = saved.placement(&displays);
                 saved.bounds = Some(placement);
                 let bounds = bounds(placement);
+                let icon = match crate::assets::window_icon() {
+                    Ok(icon) => Some(icon),
+                    Err(error) => {
+                        eprintln!("Could not decode application icon: {error:#}");
+                        None
+                    }
+                };
                 let options = WindowOptions {
+                    icon,
                     window_bounds: Some(if saved.maximized {
                         WindowBounds::Maximized(bounds)
                     } else {
@@ -67,12 +78,18 @@ pub fn run(store: Store, mut saved: State, notice: Option<String>) {
                             .bg(gpui_kit::transparent_black())
                     })
                 }) {
+                    failure.set(true);
                     eprintln!("Could not open Wireroom: {error:#}");
                     cx.update(|cx| cx.quit());
                 }
             })
             .detach();
         });
+    if failed.get() {
+        std::process::ExitCode::FAILURE
+    } else {
+        std::process::ExitCode::SUCCESS
+    }
 }
 
 fn mode(appearance: Appearance, system: WindowAppearance) -> ThemeMode {
@@ -128,6 +145,12 @@ impl Shell {
         let activation = cx.observe_window_activation(window, |_, _, cx| cx.notify());
         let appearance =
             cx.observe_window_appearance(window, |shell, window, cx| shell.sync_theme(window, cx));
+        let handle = window.window_handle();
+        let quit = cx.on_app_quit(move |shell, cx| {
+            let _ = handle.update(cx, |_, window, cx| shell.remember(window, cx));
+            shell.save();
+            async {}
+        });
         let owner = cx.entity().downgrade();
         window.on_window_should_close(cx, move |window, cx| {
             let _ = owner.update(cx, |shell, cx| {
@@ -144,7 +167,7 @@ impl Shell {
             menu: None,
             menu_dismiss: None,
             title_drag_pending: false,
-            _subscriptions: vec![bounds, activation, appearance],
+            _subscriptions: vec![bounds, activation, appearance, quit],
         }
     }
 
@@ -153,7 +176,8 @@ impl Shell {
         if !window.is_visible() {
             return;
         }
-        let report = window.inner_window_bounds();
+        // WindowOptions and window_bounds use the complete window rectangle.
+        let report = window.window_bounds();
         let expanded = window.is_maximized()
             || window.is_fullscreen()
             || matches!(

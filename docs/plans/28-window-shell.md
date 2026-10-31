@@ -36,11 +36,19 @@ existing Wireroom icons. It does not connect the interface to `dmd` or change re
   in the platform's per-user configuration location. Restore usable visible bounds
   when a display disappears or the saved bounds are unsuitable. Preserve normal bounds
   through maximize/minimize; use a sensible centred default on first run.
+- Strip symbols only from the GUI release package to reduce distribution size;
+  keep dependency optimization, CLI release builds and development symbols unchanged.
+  Do not add LTO/code-generation changes for this step.
+- Limit Cargo compilation to two parallel jobs in the repository configuration.
+  Run background validation at lowered scheduler priority with `nice -n 10`.
+  Do not start concurrent validation builds or saturate the interactive desktop.
 - Keep registry dependency debug symbols disabled in development builds while
   retaining workspace debugging. Remove only confirmed obsolete Cargo build outputs
   before measuring the fresh gate/build footprint; retain fixtures and native evidence.
-- Export the unchanged small optical icon at 64 pixels to avoid GPUI's intrinsic
-  16-pixel SVG raster being enlarged at fractional display scales. Register the
+- Export a small optical icon at 64 pixels, retaining the canonical ring/arrow
+  coordinates and four round dots with thinner ring strokes for 16-pixel legibility.
+  Keep the large canonical artwork unchanged. Avoid enlarging an intrinsic small
+  SVG raster at fractional display scales. Register the
   matching desktop entry/icon only for the current user, with the actual executable
   path and backups for differing prior Wireroom files.
 - Keep state persistence simple. Missing state is normal; malformed state must not
@@ -86,7 +94,7 @@ existing Wireroom icons. It does not connect the interface to `dmd` or change re
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after the gate passes
+- [x] `cargo build --release --locked`, after the gate passes
 - [ ] Run full CI on Linux, Windows and macOS; distinguish build coverage from native
   interaction actually exercised, and record any remaining platform limitations.
 
@@ -104,9 +112,16 @@ task; do not begin it as part of this change.
   stopped, and no further desktop input automation is used. Menu selection, live
   theme switching and the complete maximize/minimize/relaunch interaction sequence
   remain manual owner checks. Seeded state or a screenshot is not interaction proof.
-- The toolbar export and current-user desktop registration address the reported
-  pixelated toolbar image and missing desktop identity. Registration changes only
-  Wireroom artifacts; the helper preserves different prior versions.
+- The corrected small optical artwork uses the canonical ring/arrow geometry and
+  round dots, with coral/outline strokes reduced to 7/9 view-box units. A 64-pixel
+  export is displayed at 16 logical pixels. The large canonical artwork is unchanged.
+- Actual KWin icon pixels from a fresh native Wayland window verified the canonical
+  application icon at 80x80 physical pixels on the fractional-scale display. Named
+  theme lookup had produced an empty icon despite matching application identity;
+  the generated per-user desktop entry now uses a validated absolute installed PNG
+  path. Standard scalable, 48- and 256-pixel icons are also registered. Only Wireroom
+  files change, differing prior files are backed up, and old owner windows remain
+  untouched. This verifies native icon resolution, not menu or playback interaction.
 - The development dependency-symbol reduction addresses avoidable build storage.
   Cargo reported removing 14.4 GiB of stale development artifacts; the targeted
   cleanup also removed the
@@ -116,5 +131,25 @@ task; do not begin it as part of this change.
   workspace debug information remains enabled.
 - The final formatting and Clippy checks passed. Fresh full tests passed in 3m20s;
   all three focused state tests passed, as did all eight conditional policy tests
-  (3.66s execution). The subsequent debug build completed in 7.9s. Release build and
-  cross-platform CI remain pending at the implementation review snapshot.
+  (3.66s execution). The subsequent debug build completed in 7.9s. The corrected release rebuild passed;
+  cross-platform CI remains pending at the implementation review snapshot.
+
+## Mechanical review corrections
+
+- Round 1 accepted all three findings: use the same complete-window bounds for
+  creation and persistence (inner bounds subtract the client shadow on every run),
+  save state on application quit as well as close, and return a failing exit status
+  when native window creation fails. No findings were declined.
+- The previous manual X11 growth observation did not establish matching creation
+  and reported units and was insufficient evidence for using inner bounds globally.
+  Wayland source and actual geometry showed the inner-bounds change shrinking the
+  visible window by 24 logical pixels per run. Persistence now uses window_bounds
+  directly, matching WindowOptions, without a guessed shadow correction.
+
+- Corrected snapshot validation passed formatting, Clippy, full tests and all eight
+  conditional policy tests with two jobs at lowered scheduler priority. The GUI-only
+  release symbol-strip override is supported by Cargo; its incremental rebuild
+  passed in 23.65s and reduced `wr` from 49.68 MiB to 36.31 MiB. The debug binary is
+  161.74 MiB. Development artifacts occupy 3.6 GiB and release artifacts 2.0 GiB
+  after the clean rebuild. Compilation concurrency is capped at two jobs after the
+  owner reported desktop responsiveness problems.

@@ -10,6 +10,7 @@ fi
 data=${XDG_DATA_HOME:-$HOME/.local/share}
 entry="$data/applications/io.github.o_kos.wireroom.desktop"
 icon="$data/icons/hicolor/scalable/apps/io.github.o_kos.wireroom.svg"
+icon_png="$data/icons/hicolor/256x256/apps/io.github.o_kos.wireroom.png"
 if [[ -e "$entry" ]] && ! grep -qx 'Name=Wireroom' "$entry"; then
     echo "Refusing to replace an unrelated desktop entry" >&2
     exit 1
@@ -25,13 +26,27 @@ escaped=${escaped//%/%%}
 while IFS= read -r line; do
     if [[ "$line" == Exec=* ]]; then
         printf 'Exec="%s"\n' "$escaped"
+    elif [[ "$line" == Icon=* ]]; then
+        printf 'Icon=%s\n' "${icon_png//\\/\\\\}"
     else
         printf '%s\n' "$line"
     fi
 done < "$root/crates/ui/assets/io.github.o_kos.wireroom.desktop" > "$work/wireroom.desktop"
-for destination in "$entry" "$icon"; do
-    source="$work/wireroom.desktop"
-    if [[ "$destination" == "$icon" ]]; then source="$root/assets/icons/wireroom.svg"; fi
+sources=(
+    "$work/wireroom.desktop"
+    "$root/assets/icons/wireroom.svg"
+    "$root/crates/ui/assets/wireroom-window-48.png"
+    "$root/crates/ui/assets/wireroom-window.png"
+)
+destinations=(
+    "$entry"
+    "$icon"
+    "$data/icons/hicolor/48x48/apps/io.github.o_kos.wireroom.png"
+    "$icon_png"
+)
+for index in "${!destinations[@]}"; do
+    destination=${destinations[$index]}
+    source=${sources[$index]}
     if [[ -e "$destination" ]] && ! cmp -s "$source" "$destination"; then
         backup=$(mktemp "${destination}.backup.XXXXXX")
         cp -p -- "$destination" "$backup"
@@ -44,5 +59,8 @@ if command -v update-desktop-database >/dev/null; then
 fi
 if command -v gtk-update-icon-cache >/dev/null; then
     gtk-update-icon-cache --force --ignore-theme-index "$data/icons/hicolor"
+fi
+if command -v kbuildsycoca6 >/dev/null; then
+    kbuildsycoca6 --noincremental
 fi
 printf '%s\n' 'Registered Wireroom for the current user.'

@@ -44,3 +44,7 @@ branches_sharing_code = "warn"
 # Keep workspace debugging while avoiding large native UI dependency symbols.
 [profile.dev.package."*"]
 debug = 0
+
+# Omit GUI release symbols without changing dependency optimization or CLI builds.
+[profile.release.package.wireroom]
+strip = "symbols"

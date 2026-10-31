@@ -8570,6 +8570,7 @@ dependencies = [
  "dirs 6.0.0",
  "embed-resource",
  "gpui-kit",
+ "image",
  "serde",
  "serde_json",
  "tempfile",

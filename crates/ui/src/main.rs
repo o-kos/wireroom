@@ -6,7 +6,7 @@ mod shell;
 mod state;
 mod theme;
 
-fn main() {
+fn main() -> std::process::ExitCode {
     let (store, state, notice) = state::Store::load();
-    shell::run(store, state, notice);
+    shell::run(store, state, notice)
 }
