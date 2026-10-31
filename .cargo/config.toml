@@ -1,0 +1,3 @@
+[build]
+# Keep native dependency compilation responsive on an interactive desktop.
+jobs = 2

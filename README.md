@@ -42,6 +42,9 @@ cargo build --locked
 cargo build -p dmd --no-default-features --locked
 ```
 
+Cargo limits compilation to two parallel jobs to keep the desktop responsive.
+Background validation commands can use `nice -n 10` to yield scheduler priority.
+
 The replay CLI needs only Rust and its platform linker. The native `wr` window
 also needs the [GPUI platform libraries](crates/ui/README.md#platform-prerequisites). Replay uses portable output
 publication and trusts caller-selected output and its ancestry to remain stable
