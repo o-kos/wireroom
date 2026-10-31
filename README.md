@@ -33,7 +33,9 @@ File opening and processing controls are unavailable in this step; no file is op
 and no `dmd` process is started. See the [interface guide](crates/ui/README.md).
 Other CLI commands remain unimplemented. The accepted full window concept is in
 [`docs/ui`](docs/ui/README.md).
-See `docs/plans/` for active work.
+See `docs/plans/` for active work and the
+[window shell implementation record](docs/plans/completed/28-window-shell.md) for
+validation evidence and remaining owner acceptance checks.
 
 ## Building
 

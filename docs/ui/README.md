@@ -11,6 +11,17 @@ The interface is built with GPUI through GPUI Kit, on the component principles o
 drawing only for the domain canvases (spectrum, sonogram, minimap, constellation), and
 settings in popovers anchored to their summaries.
 
+## Implemented shell
+
+The native `wr` window currently provides the frame, application menu, title-bar
+placeholder toolbar, Recent, idle status bar, appearance and saved placement. File
+and processing controls remain disabled. No file picker or `dmd` process is started.
+The domain panels described below remain the accepted concept for future work.
+
+`crates/ui/README.md` documents the shell and platform integration. The implementation
+record in `docs/plans/completed/28-window-shell.md` distinguishes native evidence
+from the remaining owner interaction checklist.
+
 ## Layout
 
 - **Title bar and toolbar.** The application button opens the menu. The toolbar holds the
