@@ -36,6 +36,13 @@ existing Wireroom icons. It does not connect the interface to `dmd` or change re
   in the platform's per-user configuration location. Restore usable visible bounds
   when a display disappears or the saved bounds are unsuitable. Preserve normal bounds
   through maximize/minimize; use a sensible centred default on first run.
+- Keep registry dependency debug symbols disabled in development builds while
+  retaining workspace debugging. Remove only confirmed obsolete Cargo build outputs
+  before measuring the fresh gate/build footprint; retain fixtures and native evidence.
+- Export the unchanged small optical icon at 64 pixels to avoid GPUI's intrinsic
+  16-pixel SVG raster being enlarged at fractional display scales. Register the
+  matching desktop entry/icon only for the current user, with the actual executable
+  path and backups for differing prior Wireroom files.
 - Keep state persistence simple. Missing state is normal; malformed state must not
   prevent launching. Surface meaningful write failures without repeated modal dialogs.
 - Distinguish the GUI's platform build prerequisites from the existing Rust-only CLI.
@@ -58,10 +65,10 @@ existing Wireroom icons. It does not connect the interface to `dmd` or change re
 
 ## Implementation steps
 
-- [ ] Add the native shell, assets and Argand-based frame with functional window controls.
-- [ ] Add application menus, toolbar, status bar and shared Recent empty/list states.
-- [ ] Implement appearance and window-state persistence with visible restoration fallback.
-- [ ] Update build prerequisites, CI, user documentation and contributor role assignments.
+- [x] Add the native shell, assets and Argand-based frame with functional window controls.
+- [x] Add application menus, toolbar, status bar and shared Recent empty/list states.
+- [x] Implement appearance and window-state persistence with visible restoration fallback.
+- [x] Update build prerequisites, CI, user documentation and contributor role assignments.
 - [ ] Validate the native window manually and complete the local gate and release build.
 - [ ] Address independent mechanical and intent review, and prepare a Draft PR for owner review.
 - [ ] Move this plan to `docs/plans/completed/` before final review.
@@ -75,10 +82,10 @@ existing Wireroom icons. It does not connect the interface to `dmd` or change re
 - [ ] Check missing/malformed saved state and off-screen saved bounds. Verify Recent
   menu/list consistency with temporary isolated state, without adding fake product data.
 - [ ] Confirm unavailable file/processing controls cannot open a file or launch `dmd`.
-- [ ] Add only focused state/restoration tests that protect observable behaviour.
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --locked`
-- [ ] `cargo test --locked`
+- [x] Add only focused state/restoration tests that protect observable behaviour.
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --locked`
+- [x] `cargo test --locked`
 - [ ] `cargo build --release --locked`, after the gate passes
 - [ ] Run full CI on Linux, Windows and macOS; distinguish build coverage from native
   interaction actually exercised, and record any remaining platform limitations.
@@ -87,3 +94,27 @@ existing Wireroom icons. It does not connect the interface to `dmd` or change re
 
 Keep the PR in Draft for the owner's visual review. Opening files remains a later
 task; do not begin it as part of this change.
+
+## Validation notes
+
+- Native Linux startup succeeded through both Wayland and X11 with desktop access.
+  Window-only screenshots confirmed the Argand-style frame, empty Recent, idle
+  footer and layout at normal and narrow sizes.
+- External input injection requested desktop remote-control permission. It was
+  stopped, and no further desktop input automation is used. Menu selection, live
+  theme switching and the complete maximize/minimize/relaunch interaction sequence
+  remain manual owner checks. Seeded state or a screenshot is not interaction proof.
+- The toolbar export and current-user desktop registration address the reported
+  pixelated toolbar image and missing desktop identity. Registration changes only
+  Wireroom artifacts; the helper preserves different prior versions.
+- The development dependency-symbol reduction addresses avoidable build storage.
+  Cargo reported removing 14.4 GiB of stale development artifacts; the targeted
+  cleanup also removed the
+  separate obsolete Cargo output directories. Fixtures and evidence were retained.
+  The fresh development gate/build uses 3.2 GiB; `wr` is 161 MiB rather than the
+  previous 694 MiB debug executable. Registry dependency symbols are omitted;
+  workspace debug information remains enabled.
+- The final formatting and Clippy checks passed. Fresh full tests passed in 3m20s;
+  all three focused state tests passed, as did all eight conditional policy tests
+  (3.66s execution). The subsequent debug build completed in 7.9s. Release build and
+  cross-platform CI remain pending at the implementation review snapshot.

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Wireroom
+Comment=Inspect recorded signals
+Exec=wr
+Icon=io.github.o_kos.wireroom
+Terminal=false
+Categories=Science;
+StartupWMClass=io.github.o_kos.wireroom

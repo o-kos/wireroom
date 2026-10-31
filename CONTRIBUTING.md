@@ -1,6 +1,6 @@
 # Contributing to Wireroom
 
-Wireroom's interface binary will be `wr`, and `dmd` is its command-line tool.
+Wireroom's interface binary is `wr`, and `dmd` is its command-line tool.
 
 ## 1. Define the change
 
@@ -219,11 +219,12 @@ concise.
 
 ## Runtime architecture
 
-The workspace requires only Rust and the platform's ordinary Rust linker. It develops
+The replay CLI requires only Rust and the platform's ordinary Rust linker. The
+`wr` GUI additionally requires the platform libraries and SDK tools documented in
+`crates/ui/README.md`. It develops
 the replay implementation of `dmd`; a core implementation is a separate executable
 implementing the same CLI and run protocol. There is no native Cargo feature, C ABI,
-general backend interface or automatic implementation selection. `wr` remains
-unimplemented. Source hashing is deferred; replay uses the classic ZIP and ordinary
+general backend interface or automatic implementation selection. `wr` currently implements the window shell only. Source hashing is deferred; replay uses the classic ZIP and ordinary
 JSON profiles in the active specs. Replay trusts caller-selected output and its
 ancestry to stay stable during the run; archive paths and payloads remain untrusted. Portable staging
 publishes without overwrite before descriptors. See `crates/cli/README.md` for runtime
@@ -233,22 +234,22 @@ behavior and resource limits.
 
 ### Roles and invocation settings
 
-Claude is unavailable; use Codex only. These fixed assignments replace previous
-roles, including for unfinished work. Pass the model and reasoning effort explicitly
-on every invocation; never rely on machine-local defaults. Apply the listed access
-mode too.
+These fixed assignments replace previous roles, including unfinished work. Pass
+model and reasoning effort explicitly on every invocation; never rely on local
+defaults. The coordinator plans and decides, and does not write implementation code
+or automatically accept review suggestions.
 
-| Role | Performed by | Model | Reasoning effort and access |
-| --- | --- | --- | --- |
-| Planning | Codex | `gpt-6.1-sol` | medium |
-| Dispatch, Git and Pull Request routine | Codex | `gpt-6.1-sol` | medium |
-| Reconnaissance | Codex | `gpt-6.1-sol` | medium, read-only |
-| Implementation | Codex | `gpt-6.1-sol` | medium, workspace-write |
-| Mechanical code review | Codex | `gpt-6.1-sol` | high, read-only |
-| Intent review | Codex | `gpt-6.1-sol` | high, read-only |
+| Role | Model | Reasoning effort and access |
+| --- | --- | --- |
+| Coordination, planning and decisions | `gpt-6-astra` | medium, no implementation writes |
+| Dispatch, Git and Pull Request routine | `gpt-6.1-sol` | medium |
+| Reconnaissance | `gpt-6.1-sol` | medium, read-only |
+| Implementation | `gpt-6.1-sol` | medium, workspace-write |
+| Independent mechanical code review | `gpt-6.1-sol` | high, read-only |
+| Independent intent review | `gpt-6.1-sol` | high, read-only |
 
-Use `gpt-6.1-sol` at high for every review, regardless of who implemented the change.
-Keep these reviewer settings fixed across subsequent rounds.
+Use an independent `gpt-6.1-sol` reviewer at high for every review. Keep its settings
+fixed across rounds. The coordinator owns acceptance and rejection decisions.
 
 ### First tier: mechanical code review
 
@@ -288,7 +289,7 @@ disagrees is worth nothing.
 
 ### Second tier: intent review
 
-After the mechanical review is clean, the orchestrator uses Codex `gpt-6.1-sol`,
+After the mechanical review is clean, an independent reviewer uses `gpt-6.1-sol`,
 explicitly at high reasoning effort and read-only, to review the final diff once
 against the approved plan, owner
 decisions and every invariant. This tier asks whether the result is what was requested

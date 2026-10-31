@@ -1,6 +1,6 @@
 [workspace]
-members = ["crates/source", "crates/replay", "crates/protocol", "crates/cli"]
-default-members = ["crates/source", "crates/replay", "crates/protocol", "crates/cli"]
+members = ["crates/source", "crates/replay", "crates/protocol", "crates/cli", "crates/ui"]
+default-members = ["crates/source", "crates/replay", "crates/protocol", "crates/cli", "crates/ui"]
 resolver = "3"
 
 [workspace.package]
@@ -40,3 +40,7 @@ fn_params_excessive_bools = "warn"
 manual_let_else = "warn"
 redundant_else = "warn"
 branches_sharing_code = "warn"
+
+# Keep workspace debugging while avoiding large native UI dependency symbols.
+[profile.dev.package."*"]
+debug = 0
