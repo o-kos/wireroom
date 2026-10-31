@@ -197,7 +197,9 @@ fn specification_example_preserves_payload_and_producer_values() {
         .ancestors()
         .nth(2)
         .unwrap();
-    let spec = fs::read_to_string(root.join("docs/replay.md")).unwrap();
+    let spec = fs::read_to_string(root.join("docs/replay.md"))
+        .unwrap()
+        .replace("\r\n", "\n");
     let journal = spec
         .split("`journal.ndjson` contains")
         .nth(1)

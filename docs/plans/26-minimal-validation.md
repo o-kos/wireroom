@@ -52,7 +52,7 @@ product checks 128 to 70 (including two doctests), workflow checks three unchang
 Eight conditional workflow tests remain ignored; unchanged policy/hook paths do
 not require them. CLI checks fall from 45 to 33.
 
-Physical Rust test/support lines fall from 5,637 to 2,984 (2,653 removed), including
+Physical Rust test/support lines fall from 5,637 to 2,986 (2,651 removed), including
 590 unchanged workflow support lines. Production falls from 4,021 to 3,404 (617
 removed). Count crate Rust files, including examples and existing test seams;
 classify test files and inline test modules as test/support, excluding README
@@ -74,3 +74,19 @@ assertion to the existing numeric command test. No findings were declined. Exact
 u64 frame, duplicate-key and ordinary JSON checks remain in the existing suite;
 the test count is unchanged. Formatting, locked all-target Clippy, locked workspace
 tests and release build pass after the correction. Further reviews remain pending.
+
+Mechanical round 2 found one accepted P2: the specification-value fixture loader
+split a Markdown fence before normalizing CRLF endings, unlike the two existing
+fixture loaders. Windows CI job 41183556349 independently confirmed the failure.
+Normalize CRLF to LF before splitting, consistently with those loaders. No findings
+were declined; no new test function or matrix was added, and production behavior
+is unchanged.
+
+All 33 existing `dmd` tests pass with `docs/replay.md` temporarily converted to CRLF.
+A `finally` block restored the original bytes, and an exact byte comparison verified
+restoration. Formatting, locked all-target Clippy, locked workspace tests and release
+build pass with the offline cache. Counts remain 73 passing: 70 product checks,
+including two doctests, and three workflow checks; eight conditional workflow tests
+remain ignored. Root's final mechanical and intent reviews and full CI rerun remain
+pending; Windows success is not yet established. Keep this plan active and PR #27
+Draft until that handoff is complete.
