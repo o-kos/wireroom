@@ -69,6 +69,12 @@ identifiers must not contain NUL.
 | Parameter map | JSON object mapping parameter names to string values. No implicit conversion from numbers, booleans or null. |
 | Identifier | Nonempty opaque string; never a path. |
 
+The numeric profile is ordinary serde JSON: signed i64 and unsigned u64 integers,
+and finite binary64 (f64) numbers. Opaque producer noninteger values may be rounded
+to f64; arbitrary precision and exotic-exponent compatibility are deferred.
+Out-of-range nonfinite values are invalid. JSON containers use serde's default recursion guard (at most 127
+nested containers in this implementation). Duplicate decoded keys remain invalid.
+
 Integer fields use integer JSON tokens without fractions or exponents. Receivers
 preserve them exactly, including values above binary64's exact integer range.
 

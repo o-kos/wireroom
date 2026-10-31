@@ -1,13 +1,12 @@
 use crate::{
-    hashing::Hashing,
     lookahead::{Ending, Lookahead, Unit},
     output::Output,
     pacing::Budget,
 };
 use anyhow::{Context as _, bail};
 use dmd_protocol::{
-    Command, Context, DecodeError, DecodedEvent, Event, LogLevel, Reader, Snapshot, Start, Started,
-    State, TerminalReason, Writer,
+    Command, Context, DecodeError, DecodedEvent, Event, Reader, Snapshot, Start, Started, State,
+    TerminalReason, Writer,
 };
 use dmd_replay::Recording;
 use dmd_source::Source;
@@ -90,9 +89,7 @@ struct Run {
     recording: Recording,
     output: Output,
     lookahead: Lookahead,
-    hashing: Option<Hashing>,
-    source: Source,
-    expected: String,
+    _source: Source,
     snapshot: Snapshot,
     rate: dmd_protocol::Rate,
     frames: u64,
@@ -103,7 +100,6 @@ struct PendingClock {
     active: bool,
     credit: f64,
     last: Instant,
-    now: Box<dyn Fn() -> Instant + Send>,
 }
 impl PendingClock {
     fn new() -> Self {
@@ -111,16 +107,15 @@ impl PendingClock {
             active: false,
             credit: 0.0,
             last: Instant::now(),
-            now: Box::new(Instant::now),
         }
     }
     fn begin(&mut self) {
         self.active = true;
         self.credit = 0.0;
-        self.last = (self.now)();
+        self.last = Instant::now();
     }
     fn account(&mut self, snapshot: &Snapshot) {
-        let now = (self.now)();
+        let now = Instant::now();
         if self.active {
             self.credit += crate::pacing::source_time(now.duration_since(self.last), snapshot);
         }
@@ -160,23 +155,18 @@ impl Run {
             frames: metadata.frames,
             snapshot: snapshot.clone(),
         });
-        let expected = settings.signal_sha256.clone();
         let lookahead = Lookahead::new(
             recording.journal()?,
             Context {
                 frames: Some(metadata.frames),
             },
         )?;
-        // Hashing starts after the caller emits started.
-        let hashing = None;
         Ok((
             Self {
                 recording,
                 output,
                 lookahead,
-                hashing,
-                source,
-                expected,
+                _source: source,
                 snapshot,
                 rate: metadata.stream.rate,
                 frames: metadata.frames,
@@ -230,22 +220,13 @@ impl<W: Write> Runtime<W> {
         let (mut run, started) = Run::setup(start)?;
         self.context.frames = Some(run.frames);
         self.emit(started)?;
-        run.hashing = Some(Hashing::start(run.source.clone(), run.expected.clone()));
         let result = self.play(&mut run);
         self.complete(&mut run, result)
     }
     fn complete(&mut self, run: &mut Run, result: anyhow::Result<()>) -> anyhow::Result<()> {
         let joined = run.lookahead.finish();
         let result = result.and(joined);
-        let warning = run.hashing.as_mut().and_then(Hashing::finish);
         if result.is_ok() {
-            if let Some(text) = warning {
-                self.emit(Event::Log {
-                    frame: self.frame,
-                    level: LogLevel::Warning,
-                    text,
-                })?;
-            }
             self.emit(Event::Finished {
                 reason: run.reason.unwrap_or(TerminalReason::End),
                 frame: self.frame,

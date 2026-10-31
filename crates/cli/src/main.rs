@@ -1,4 +1,3 @@
-mod hashing;
 mod lookahead;
 mod output;
 mod pacing;

@@ -46,7 +46,7 @@ while let Some(record) = journal.next_record()? {
 # }
 ```
 
-Journal reads validate complete envelopes, producer JSON, replay depth, paths and
+Journal reads validate complete envelopes, producer JSON, paths and
 prefix/suffix structure incrementally. Prefix results/logs returned before the
 closing progress are provisional: later logs or the closing frontier can invalidate
 the block. Callers needing complete blocks must spool or buffer them with their own
@@ -63,28 +63,18 @@ a reader. Unseen contents remain uncertified, including when the last frontier w
 The archive identity is retained; callers must prevent concurrent modification of its
 contents if they require a stable snapshot.
 
-The portable limits in `docs/replay.md` apply. Central directory memory is bounded
-by 64 MiB; entry/reference maps by 65,536 names; streaming buffers by 8 KiB per
-reader; metadata and each journal line by 16 MiB, plus their parsed exact JSON trees.
-Archive setup also has an implementation work budget of 64 MiB of aggregate
-central-directory bytes read and parsed across all EOCD candidates. A single
-candidate can use the full portable 64 MiB directory limit. Opaque comments can
-require retrying candidates; exhausting the aggregate budget fails explicitly with
-`Error::Resource` before reading another candidate directory. The budget does not
-change the format's per-directory limit, and a profile-valid archive with many
-ambiguous comment candidates may exceed this implementation budget. The same
-last-22-byte candidate is never validated twice during fallback.
+The classic ZIP limits in `docs/replay.md` apply: no ZIP64, data descriptors,
+encryption, multipart layout or entry/archive comments. The index is bounded to 8 MiB
+and 4,096 entries; each decoded entry is at most 1 GiB. Metadata and journal lines
+are at most 16 MiB, with serde's ordinary JSON numeric/recursion profile. Streaming
+buffers are 8 KiB per reader. No whole journal/block buffer, extraction directory
+or end-candidate retry is used. Explicit limits fail with `Error::Resource`.
 
-JSON has at most 128 containers on a nesting path. No whole journal/block buffer,
-compression-ratio heuristic, or extraction directory is used. Allocation failure
-at the process allocator remains platform-defined; explicit format budgets fail
-with `Error::Resource` before trusting unchecked declared sizes.
-
-Callers own signal opening/header decoding, original-frame context, digest computation
-and its diagnostic outcome, runtime lifecycle/controls/pacing and protocol output.
-The recorded digest is validated metadata, not authentication or certification of a
-matching signal or successful playback. Output path checks, exclusive publication,
-close-before-emission, reuse and published-file lifetime belong to the caller.
+Callers own source-header decoding, original-frame context, runtime controls/pacing
+and protocol output. The recorded digest is informational, syntactically validated
+metadata; no source digest is computed or compared. Output path checks, exclusive
+publication, close-before-emission, reuse and published-file lifetime belong to the
+caller.
 The [CLI runtime](https://github.com/o-kos/wireroom/blob/main/crates/cli/README.md)
 uses portable staging under caller-selected output whose ancestry and contents
 remain stable during the run. Archive matching always uses exact UTF-8 names;

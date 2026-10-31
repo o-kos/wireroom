@@ -22,9 +22,9 @@ informational and unverified. Preserve existing workflow policy and hook tests.
 
 ## Steps
 
-- [ ] Remove GUI residue and align active documentation with unimplemented `wr`.
-- [ ] Remove hashing and packet infrastructure; retain real process lifecycle checks.
-- [ ] Finish classic ZIP and ordinary JSON profiles; trim disproportionate tests.
+- [x] Remove GUI residue and align active documentation with unimplemented `wr`.
+- [x] Remove hashing and packet infrastructure; retain real process lifecycle checks.
+- [x] Finish classic ZIP and ordinary JSON profiles; trim disproportionate tests.
 - [ ] Run pinned formatting, all-target Clippy, locked tests and release build;
       record warm test timing and test/support and production reductions.
 - [ ] Push through the installed hook; align Issue #26 and Draft PR #27.

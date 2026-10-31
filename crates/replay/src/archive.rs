@@ -187,7 +187,7 @@ fn local(r: &mut dyn Source, entry: &Entry, central: u64) -> Result<(u64, u64), 
         .offset
         .checked_add(30 + names as u64 + extra as u64)
         .ok_or(Error::Archive("local overflow"))?;
-    let mut end = start
+    let end = start
         .checked_add(entry.compressed)
         .filter(|end| *end <= central)
         .ok_or(Error::Archive("compressed range"))?;
@@ -195,73 +195,14 @@ fn local(r: &mut dyn Source, entry: &Entry, central: u64) -> Result<(u64, u64), 
     if variable[..names] != *entry.name.as_bytes() {
         return Err(Error::Archive("local name mismatch"));
     }
-    let fields = index::extras(&variable[names..])?;
-    local_sizes(&h, &fields, entry)?;
-    if entry.flags & 8 != 0 {
-        let wide = entry.zip64_sizes || fields.contains_key(&1);
-        end = descriptor_end(r, end, entry, central, wide)?;
+    index::extras(&variable[names..])?;
+    if u64::from(index::u32_at(&h, 22)) != entry.size
+        || u64::from(index::u32_at(&h, 18)) != entry.compressed
+        || index::u32_at(&h, 14) != entry.crc
+    {
+        return Err(Error::Archive("local sizes mismatch"));
     }
     Ok((start, end))
-}
-fn local_sizes(h: &[u8], fields: &BTreeMap<u16, &[u8]>, entry: &Entry) -> Result<(), Error> {
-    let z = fields.get(&1).copied().unwrap_or_default();
-    let mut p = 0;
-    let size = index::extended(
-        u64::from(index::u32_at(h, 22)),
-        u64::from(u32::MAX),
-        z,
-        &mut p,
-        8,
-    )?;
-    let compressed = index::extended(
-        u64::from(index::u32_at(h, 18)),
-        u64::from(u32::MAX),
-        z,
-        &mut p,
-        8,
-    )?;
-    let crc = index::u32_at(h, 14);
-    if entry.flags & 8 == 0 {
-        if size != entry.size || compressed != entry.compressed || crc != entry.crc {
-            return Err(Error::Archive("local sizes mismatch"));
-        }
-    } else if (size != 0 && size != entry.size)
-        || (compressed != 0 && compressed != entry.compressed)
-        || (crc != 0 && crc != entry.crc)
-    {
-        return Err(Error::Archive("descriptor local mismatch"));
-    }
-    Ok(())
-}
-fn descriptor_end(
-    r: &mut dyn Source,
-    at: u64,
-    entry: &Entry,
-    central: u64,
-    wide: bool,
-) -> Result<u64, Error> {
-    let available = (central - at).min(24) as usize;
-    let b = index::bytes(r, at, available)?;
-    let prefixes = if b.len() >= 4 && index::u32_at(&b, 0) == 0x08074b50 {
-        vec![4, 0]
-    } else {
-        vec![0]
-    };
-    let width = if wide { 8 } else { 4 };
-    for prefix in prefixes {
-        let length = prefix + 4 + 2 * width;
-        if b.len() < length || index::u32_at(&b, prefix) != entry.crc {
-            continue;
-        }
-        let sizes = &b[prefix + 4..length];
-        let mut p = 0;
-        let compressed = index::extended(0, 0, sizes, &mut p, width)?;
-        let size = index::extended(0, 0, sizes, &mut p, width)?;
-        if compressed == entry.compressed && size == entry.size {
-            return Ok(at + length as u64);
-        }
-    }
-    Err(Error::Archive("data descriptor mismatch"))
 }
 struct Range {
     handle: Handle,
@@ -423,28 +364,4 @@ fn check_cancelled(flag: Option<&std::sync::atomic::AtomicBool>) -> Result<(), E
         return Err(Error::Cancelled);
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn ordered_ranges_check_both_neighbors_and_exact_reopens() {
-        let mut ranges = BTreeMap::new();
-        for (start, end, name) in [(100, 110, "one"), (300, 310, "three"), (200, 210, "two")] {
-            register_range(&mut ranges, start, end, name).unwrap();
-        }
-        register_range(&mut ranges, 200, 210, "two").unwrap();
-        assert_eq!(ranges.len(), 3);
-        for (start, end, name) in [
-            (105, 115, "predecessor"),
-            (190, 205, "successor"),
-            (110, 301, "spanning"),
-            (200, 210, "different"),
-            (200, 211, "two"),
-        ] {
-            assert!(register_range(&mut ranges, start, end, name).is_err());
-        }
-        register_range(&mut ranges, 110, 200, "adjacent").unwrap();
-    }
 }

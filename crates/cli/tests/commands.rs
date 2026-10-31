@@ -84,15 +84,15 @@ fn malformed_prestart_lines_keep_fifo_and_stop_never_opens_recording() {
 
 #[test]
 fn oversized_command_is_fatal_and_terminal() {
-    use std::{io::Write, process::Stdio};
+    use std::{io::Read, process::Stdio};
     let mut child = Command::new(env!("CARGO_BIN_EXE_dmd"))
         .args(["run", "--message-format", "json"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
-    let oversized = vec![b'x'; dmd_protocol::MAX_LINE_BYTES + 2];
-    let _ = child.stdin.take().unwrap().write_all(&oversized);
+    let mut oversized = std::io::repeat(b'x').take(dmd_protocol::MAX_LINE_BYTES as u64 + 2);
+    let _ = std::io::copy(&mut oversized, &mut child.stdin.take().unwrap());
     let output = child.wait_with_output().unwrap();
     assert!(!output.status.success());
     let events: Vec<serde_json::Value> = String::from_utf8(output.stdout)

@@ -23,11 +23,13 @@ reports exact original-source frames and retains independent cursors over the
 opened signal identity.
 
 `dmd run --message-format json` implements replay lifecycle, FIFO controls, pacing,
-asset publication and background diagnostic hashing. Its output trust assumption
-and resource limits are documented in the
-[CLI runtime guide](crates/cli/README.md). Other commands and the Wireroom interface
-remain future work. The interface will use GPUI; its accepted window concept is in
-[`docs/ui`](docs/ui/README.md). See `docs/plans/` for active work.
+asset publication. Its output trust assumption and resource limits are documented
+in the [CLI runtime guide](crates/cli/README.md). Source digest verification is
+deferred; recordings use the small classic ZIP and ordinary JSON profiles.
+
+Other commands and the Wireroom interface remain unimplemented. The accepted
+window concept is preserved in [`docs/ui`](docs/ui/README.md) for a separate task.
+See `docs/plans/` for active work.
 
 ## Building
 

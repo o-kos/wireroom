@@ -29,14 +29,7 @@ pub struct Lookahead {
     worker: Option<JoinHandle<()>>,
 }
 impl Lookahead {
-    pub fn new(journal: Journal, context: EventContext) -> anyhow::Result<Self> {
-        Self::with_limit(journal, context, 256 * 1024 * 1024)
-    }
-    pub(crate) fn with_limit(
-        mut journal: Journal,
-        context: EventContext,
-        limit: u64,
-    ) -> anyhow::Result<Self> {
+    pub fn new(mut journal: Journal, context: EventContext) -> anyhow::Result<Self> {
         let (requests, input) = mpsc::sync_channel::<File>(1);
         let (output, results) = mpsc::sync_channel(1);
         let cancel = Arc::new(AtomicBool::new(false));
@@ -46,7 +39,7 @@ impl Lookahead {
             .spawn(move || {
                 let mut suffix = false;
                 while let Ok(file) = input.recv() {
-                    let result = spool(&mut journal, file, context, &mut suffix, limit);
+                    let result = spool(&mut journal, file, context, &mut suffix);
                     let failed = result.is_err();
                     if output.send(result).is_err() || failed {
                         break;
@@ -63,18 +56,6 @@ impl Lookahead {
     #[cfg(test)]
     pub(crate) fn cancellation(&self) -> Arc<AtomicBool> {
         self.cancel.clone()
-    }
-    #[cfg(test)]
-    pub(crate) fn wait_finished(&self) {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        while self
-            .worker
-            .as_ref()
-            .is_some_and(|worker| !worker.is_finished())
-        {
-            assert!(std::time::Instant::now() < deadline);
-            thread::yield_now();
-        }
     }
     pub fn finish(&mut self) -> anyhow::Result<()> {
         self.cancel.store(true, Ordering::Relaxed);
@@ -114,7 +95,6 @@ fn spool(
     mut file: File,
     context: EventContext,
     suffix: &mut bool,
-    limit: u64,
 ) -> anyhow::Result<Unit> {
     file.set_len(0)?;
     file.rewind()?;
@@ -125,7 +105,7 @@ fn spool(
             Some(Record::Event(event)) => {
                 bytes += event.encode(context)?.len() as u64 + 1;
                 ensure!(
-                    bytes <= limit,
+                    bytes <= 256 * 1024 * 1024,
                     "Processing block exceeds 256 MiB spool budget"
                 );
                 writer.write_event(&event, context)?;
@@ -137,7 +117,7 @@ fn spool(
                 let event = Event::Progress { frame: to };
                 bytes += event.encode(context)?.len() as u64 + 1;
                 ensure!(
-                    bytes <= limit,
+                    bytes <= 256 * 1024 * 1024,
                     "Processing block exceeds 256 MiB spool budget"
                 );
                 writer.write_event(&event, context)?;

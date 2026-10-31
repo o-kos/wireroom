@@ -21,7 +21,7 @@ until process exit, but it cannot write protocol output or retain run resources.
 
 A cancellable worker spools exactly one pending block through its validated closing
 frontier. Journal cancellation is checked at each streaming-buffer refill and
-between records, including skipped extensions. One record and its parsed exact
+between records, including skipped extensions. One record and its parsed
 JSON tree are held in memory at a time. Lookahead never submits frames; consuming
 a validated marker in the runtime starts normal finalization. A suffix unit holds
 one event. A detected worker failure remains fatal even if stop races with it;
@@ -43,15 +43,9 @@ the normal marker fixes reason `end`; later stop cannot replace it. Journal EOF
 integrity validation is required for normal completion and full draining. Fatal
 errors use the current virtual frontier and directly precede `finished(error)`.
 
-SHA-256 runs after `started` over a cursor of the retained source identity. Length,
-modification time and (on Unix) change time are compared around hashing. A matching
-completed digest is silent; mismatch, diagnostic read failure, observed change,
-worker startup failure or cancellation produces at most one warning before successful
-terminal completion. Fatal completion omits this optional warning. Cancellation
-checks each 8 KiB read and joins the worker; completion never waits for a full hash.
-As with required archive and output I/O, the OS must eventually complete a pending
-filesystem operation. This is diagnostic verification, not authentication or a
-snapshot: callers must keep source/archive contents stable throughout use.
+Source digest verification is deferred. The metadata digest is informational and
+checked for syntax only; there is no hash worker, full source scan or warning.
+Source/archive contents must remain stable throughout use of their retained identities.
 
 ## Output publication
 
@@ -88,24 +82,19 @@ The recording/protocol limits still apply. Runtime budgets are smaller where not
 | Input queue | One decoded command plus one producer-side bounded line/command |
 | Published payloads | 65,536 distinct exact paths |
 | Total newly materialized payload bytes | 64 GiB per invocation |
-| Streaming buffers | 8 KiB per journal, asset and hash reader |
+| Streaming buffers | 8 KiB per journal and asset reader |
 | Commands handled per polling turn | At most 32, preserving FIFO |
 
 Spool and output disk exhaustion fail explicitly without truncation. A single
-protocol/journal line remains bounded at 16 MiB; exact JSON parsing and encoding
+protocol/journal line remains bounded at 16 MiB; ordinary JSON parsing and encoding
 can hold several representations of that one line. No full journal, full payload
 or unbounded block is retained in memory. Local allocator and kernel failures can
 still prevent terminal delivery, as can a broken stdout pipe.
 
 ## Validation
 
-The process suite reads the normative example directly from `docs/replay.md`,
-checks producer values, exact payload and termination, and checks availability at
-descriptor delivery and after exit. Common process tests run across platforms where
-practical; the deterministic packet-pipe exchange is Linux-specific and symlink
-fixtures use Unix APIs. Tests cover archive paths, destination/ancestor conflicts,
-repeated assets, all files before a result, CRC failures and temporary cleanup.
-Deterministic event writers inject controls during submitted blocks and finalization;
-pacing uses injected elapsed durations. Hash tests cover match/mismatch, read
-failure, cancellation and joining. Local validation currently uses the installed
-x86_64 Linux target; Windows/macOS execution has not been performed locally.
+Small process checks run the documented example at `max`, assert producer values,
+payload availability and terminal exit, and exercise pause/resume, stop/EOF,
+missing/corrupt input and no-overwrite/path rejection. Retained-reader cancellation
+and worker joining have a separate bounded check. No packet-pipe harness or large
+real-boundary allocation matrix is required. The `wr` interface is unimplemented.

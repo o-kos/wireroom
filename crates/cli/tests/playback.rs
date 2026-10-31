@@ -11,9 +11,6 @@ use std::{
     time::Duration,
 };
 
-#[cfg(target_os = "linux")]
-#[path = "support/packet_process.rs"]
-mod packet;
 #[path = "support/archive.rs"]
 mod zip;
 use zip::archive;
@@ -175,88 +172,68 @@ impl Drop for Process {
         let _ = self.child.wait();
     }
 }
-fn stored(events: &[Value]) -> Vec<Value> {
-    events
-        .iter()
-        .filter(|e| !(e["event"] == "log" && e["level"] == "warning"))
-        .cloned()
-        .collect()
-}
-
-#[cfg(target_os = "linux")]
-fn example_json_blocks() -> Vec<Vec<Value>> {
-    let spec = fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(2)
-            .unwrap()
-            .join("docs/replay.md"),
-    )
-    .unwrap()
-    .replace("\r\n", "\n");
-    let example = spec
-        .split("Launch `dmd run --message-format json`")
-        .nth(1)
-        .unwrap()
-        .split("### Boundary")
-        .next()
-        .unwrap();
-    example
-        .split("```json\n")
-        .skip(1)
-        .map(|block| {
-            block
-                .split("```")
-                .next()
-                .unwrap()
-                .lines()
-                .map(|line| serde_json::from_str(line).unwrap())
-                .collect()
-        })
-        .collect()
-}
 #[test]
-#[cfg(target_os = "linux")]
 fn specification_example_preserves_payload_and_producer_values() {
     let fixture = Fixture::example();
-    let exchange = example_json_blocks();
-    let mut p = packet::PacketProcess::new(&fixture.root);
-    assert_eq!(p.next(), exchange[0][0]);
-    p.send(&exchange[1][0]); // Documented speed 1; the first block takes one source second.
-    assert_eq!(p.next(), exchange[2][0]);
-    assert_eq!(p.next(), exchange[2][1]);
-    // Keep the first result packet unread: progress cannot be written yet.
-    // Send pause alone, then wait until the reader consumes a SECOND command.
-    // It cannot read that command until pause has entered the bounded FIFO.
-    p.send(&exchange[3][0]);
-    p.consumed();
-    p.send(&exchange[3][1]);
-    p.consumed();
-    assert_eq!(p.next(), exchange[2][2]);
-    assert_eq!(p.next(), exchange[2][3]);
-    for command in &exchange[3][2..] {
-        p.send(command);
-    }
-    for event in &exchange[4] {
-        assert_eq!(&p.next(), event);
-    }
-    p.send(&exchange[5][0]);
-    for event in &exchange[6] {
-        assert_eq!(&p.next(), event);
+    let mut p = fixture.process();
+    p.send(fixture.start(false, json!("max")));
+    assert_eq!(p.next()["event"], "started");
+    let mut events = Vec::new();
+    loop {
+        let event = p.next();
         if event["binary"][0]["type"] == "file" {
             assert_eq!(
                 fs::read(fixture.root.join("out/files/message.bin")).unwrap(),
                 b"TEST"
             );
         }
+        let done = event["event"] == "finished";
+        events.push(event);
+        if done {
+            break;
+        }
     }
-    assert!(packet::wait(&mut p.child).success());
-    let mut trailing = String::new();
-    assert_eq!(p.output.read_line(&mut trailing).unwrap(), 0);
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .unwrap();
+    let spec = fs::read_to_string(root.join("docs/replay.md")).unwrap();
+    let journal = spec
+        .split("`journal.ndjson` contains")
+        .nth(1)
+        .unwrap()
+        .split("```json\n")
+        .nth(1)
+        .unwrap()
+        .split("```")
+        .next()
+        .unwrap();
+    let expected: Vec<Value> = journal
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .filter(|value| value.get("event").is_some())
+        .collect();
+    assert_eq!(&events[..events.len() - 1], expected);
+    assert_eq!(
+        events.last().unwrap(),
+        &json!({"event":"finished","reason":"end","frame":8})
+    );
+    p.success();
     assert_eq!(
         fs::read(fixture.root.join("out/files/message.bin")).unwrap(),
         b"TEST"
     );
+}
+#[test]
+fn paused_resume_completes_at_max_speed() {
+    let fixture = Fixture::example();
+    let mut p = fixture.process();
+    p.send(fixture.start(true, json!("max")));
+    assert_eq!(p.next()["event"], "started");
+    p.send(json!({"command":"resume"}));
+    assert_eq!(p.next()["state"], "playing");
+    assert_eq!(p.finish().last().unwrap()["reason"], "end");
+    p.success();
 }
 #[test]
 fn paused_fifo_controls_are_atomic_and_eof_stops() {
@@ -299,7 +276,7 @@ fn stop_cancels_pending_pacing_without_submitting() {
     p.send(fixture.start(false, json!(0.000001)));
     assert_eq!(p.next()["event"], "started");
     p.send(json!({"command":"stop"}));
-    let events = stored(&p.finish());
+    let events = p.finish();
     assert_eq!(
         events,
         [json!({"event":"finished","reason":"stopped","frame":0})]
@@ -316,7 +293,7 @@ fn empty_paused_stop_drains_zero_frontier_suffix() {
     p.send(fixture.start(true, json!(1)));
     assert_eq!(p.next()["event"], "started");
     p.send(json!({"command":"stop"}));
-    let events = stored(&p.finish());
+    let events = p.finish();
     assert_eq!(events[0], json!({"event":"progress","frame":0}));
     assert_eq!(events[1]["text"], "drain");
     assert_eq!(events[2]["reason"], "stopped");
@@ -411,13 +388,32 @@ fn paused_early_stop_leaves_bad_suffix_unread() {
     p.send(f.start(true, json!("max")));
     assert_eq!(p.next()["event"], "started");
     p.send(json!({"command":"stop"}));
-    let events = stored(&p.finish());
+    let events = p.finish();
     assert_eq!(
         events,
         [json!({"event":"finished","reason":"stopped","frame":0})]
     );
     p.success();
 }
+#[test]
+fn absent_source_or_companion_and_corrupt_archive_fail_before_started() {
+    for invalid in ["source", "companion", "corrupt"] {
+        let fixture = Fixture::example();
+        match invalid {
+            "source" => fs::remove_file(fixture.root.join("example.wav")).unwrap(),
+            "companion" => fs::remove_file(fixture.root.join("example.wav.replay")).unwrap(),
+            _ => fs::write(fixture.root.join("example.wav.replay"), b"broken ZIP").unwrap(),
+        }
+        let mut process = fixture.process();
+        process.send(fixture.start(false, json!("max")));
+        let events = process.finish();
+        assert!(events.iter().all(|event| event["event"] != "started"));
+        assert_eq!(events[0]["fatal"], true);
+        assert_eq!(events.last().unwrap()["reason"], "error");
+        assert!(!process.child.wait().unwrap().success());
+    }
+}
+
 #[test]
 fn invalid_initial_settings_fail_before_started() {
     for patch in [
@@ -487,7 +483,7 @@ fn incomplete_input_is_rejected_before_eof_stop() {
     assert_eq!(p.next()["event"], "started");
     p.raw("{\"command\":\"resume\"}");
     p.input.take();
-    let events = stored(&p.finish());
+    let events = p.finish();
     assert_eq!(events[0]["fatal"], false);
     assert_eq!(events[1]["reason"], "stopped");
     p.success();
@@ -532,25 +528,6 @@ fn symlink_output_root_and_nonregular_source_fail_before_started() {
     let events = p.finish();
     assert_eq!(events[0]["fatal"], true);
     assert!(!p.child.wait().unwrap().success());
-}
-
-#[test]
-#[cfg(target_os = "linux")]
-fn stdout_failure_exits_nonzero_after_started_and_active_lookahead() {
-    let f = Fixture::example();
-    let mut p = packet::PacketProcess::new(&f.root);
-    assert_eq!(p.next()["event"], "hello");
-    p.send(&f.start(false, json!("max")));
-    assert_eq!(p.next()["event"], "started");
-    // A producer event proves lookahead processed a request after hashing started.
-    assert_eq!(
-        p.next(),
-        json!({"event":"log","frame":0,"level":"info","text":"Recorded run"})
-    );
-    // Drop the only read endpoint while stdin stays open and workers belong to the run.
-    let replacement = BufReader::new(fs::File::open(f.root.join("example.wav")).unwrap());
-    drop(std::mem::replace(&mut p.output, replacement));
-    assert!(!packet::wait(&mut p.child).success());
 }
 
 #[test]

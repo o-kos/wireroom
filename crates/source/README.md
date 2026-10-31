@@ -45,7 +45,7 @@ embedded signatures. Pad byte values are unconstrained. Inspection reads only th
 across all payloads and padding, allocating no memory from declared sizes.
 `MAX_CHUNKS` is 65,536, including fmt/data. Equality succeeds; an additional chunk
 returns `Resource::ChunkBudget` before reading its header or scanning the remainder.
-Thus successful inspection reads at most 524,318 bytes, irrespective of payload size.
+Payload contents are skipped, irrespective of their size.
 
 ## Failures and caller obligations
 
@@ -60,9 +60,6 @@ An opened identity survives pathname replacement on supporting platforms, but do
 not freeze externally modified contents. Callers must ensure stability throughout
 inspection and subsequent use, and handle later I/O errors. Skipped bytes are not
 read-verified. This API neither hashes nor authenticates the source.
-`SourceCursor::file_metadata()` inspects its retained identity for diagnostics.
-The CLI hashes that identity in a cancellable worker under caller-owned stability
-rules; see the [runtime guide](https://github.com/o-kos/wireroom/blob/main/crates/cli/README.md). No digest type is provided here.
 Pass `source.metadata().frames` to `dmd_replay::Recording::open` or `from_reader`;
 replay/protocol contracts and their independent versions remain unchanged.
 

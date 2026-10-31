@@ -7,8 +7,7 @@
 //! No API here executes commands, accesses files or synthesizes runtime events.
 //!
 //! JSON containers have an explicit implementation budget of [`MAX_DEPTH`] levels;
-//! this is independent of replay resource limits. Opaque numbers are never routed
-//! through binary64. Known frequency and numeric speed fields intentionally are.
+//! integers remain exact; noninteger producer numbers use finite binary64.
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md"))]
 
 mod codec;
@@ -25,19 +24,15 @@ pub const PROTOCOL_VERSION: u32 = 1;
 /// The version advertised by this implementation.
 pub const CURRENT_VERSION: Version = Version { major: 1, minor: 0 };
 
-/// Invalid individual-message data. All failures are inspectable without text parsing.
+/// Invalid individual-message data; JSON parser details are retained as text.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ValidationError {
-    #[error("invalid JSON at byte {offset}")]
-    Json { offset: usize },
-    #[error("duplicate object key: {0}")]
-    DuplicateKey(String),
+    #[error("invalid JSON: {0}")]
+    Json(String),
     #[error("JSON container depth exceeds implementation budget")]
     DepthLimit,
     #[error("invalid JSON number token")]
     InvalidNumber,
-    #[error("invalid JSON string")]
-    InvalidString,
     #[error("expected {expected} in {field}")]
     Type {
         field: String,
