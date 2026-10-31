@@ -45,10 +45,15 @@ existing Wireroom icons. It does not connect the interface to `dmd` or change re
 - Keep registry dependency debug symbols disabled in development builds while
   retaining workspace debugging. Remove only confirmed obsolete Cargo build outputs
   before measuring the fresh gate/build footprint; retain fixtures and native evidence.
-- Export a small optical icon at 64 pixels, retaining the canonical ring/arrow
-  coordinates and four round dots with thinner ring strokes for 16-pixel legibility.
-  Keep the large canonical artwork unchanged. Avoid enlarging an intrinsic small
-  SVG raster at fractional display scales. Register the
+- Match Argand's actual application-button metrics and component behavior: a
+  22-logical-pixel `img`, a 26-pixel button, 6-pixel horizontal padding, `gap_1`,
+  measured label width and the reference custom Off/On surface formulas. Use the
+  reference trigger wrapper so a popover cannot replace those surfaces with the
+  toolkit's selected state. Preserve active/inactive title-bar palette roles.
+- Export the small optical artwork at 64 pixels, retaining canonical ring/arrow
+  coordinates and four round dots with a thin coral stroke and no navy outlines.
+  Match visible logo fill by adjusting view-box padding, not enlarging the 22-pixel
+  image box. Keep the large canonical/native artwork unchanged. Register the
   matching desktop entry/icon only for the current user, with the actual executable
   path and backups for differing prior Wireroom files.
 - Keep state persistence simple. Missing state is normal; malformed state must not
@@ -101,13 +106,16 @@ Moving this record to `completed/` does not claim those remaining checks passed.
   frame, empty Recent, idle footer and normal/narrow layout.
 - [x] Native Wayland application icon: actual KWin icon pixels verified at 80x80
   physical pixels on the fractional-scale display.
-- [x] Small optical artwork: canonical ring/arrow coordinates and round marks,
-  thinner 7/9 coral/outline strokes, reviewed at 16 pixels and exported at 64 pixels.
+- [x] Reference-size artwork: canonical ring/arrow coordinates and round marks,
+  coral stroke 7 without navy outlines, exported at 64 pixels and displayed at the
+  reference 22-logical-pixel size. Compare visible fill at 125% scale.
+- [x] Read-only capture of the owned active X11 window confirmed the normal button
+  with the corrected image size, optical fill and custom resting surface.
 
 The final gate used two parallel Cargo jobs and lowered scheduler priority with
 `nice -n 10`. The fresh full test build completed in 3m20s; later cached checks also
 passed. The GUI-only release symbol-strip override rebuilt in 23.65s and reduced
-`wr` from 49.68 MiB to 36.31 MiB. The debug binary is 161.74 MiB; workspace debug
+`wr` from 49.68 MiB to 36.32 MiB. The debug binary is 161.94 MiB; workspace debug
 information remains enabled. Dependency optimization and CLI release builds are
 unchanged; no LTO or code-generation change was needed.
 
@@ -153,10 +161,33 @@ Mechanical round 1 identified three substantive P2 findings. All were accepted:
 - Return a failing process exit status when native window creation fails.
 
 No findings were declined. Mechanical round 2 was clean and confirmed the three
-corrections. Independent intent review is pending. Full CI run `41250104431` is
-pending; native interaction coverage must remain distinct from cross-platform build
-and test coverage.
+corrections. The subsequent reference application-button correction requires the
+focused final mechanical round and intent follow-up. Full CI must cover that latest
+snapshot; an earlier run is not evidence for the new button. Native interaction
+coverage remains distinct from cross-platform build and test coverage.
 
 Keep PR #29 in Draft for the owner's visual review. Ready and merge transitions
 remain outside this handoff. Opening files, starting `dmd`, playback and domain
 panels remain separate future work.
+
+## Application-button reference check
+
+The original 16-pixel button image and generic ghost variant did not match Argand.
+The final implementation uses the reference's `img` pipeline and exact 22/26/6
+image/height/padding metrics, `gap_1`, measured label width, custom Off/On formulas,
+TopLeft popover anchor and non-selecting trigger wrapper. Theme adjustments and the
+active/inactive title-bar palette are unchanged and match the reference source.
+No always-black title-bar override was introduced.
+
+Measured at half-opacity, Argand's actual 24-pixel PNG fills 91.67% of its width and
+83.33% of its height. The previous Wireroom export filled 82.81% and 75%, making its
+visible logo smaller even in an equal image box. The corrected optical view box
+fills 90.63% and 84.38%, within 0.24 logical pixels of the reference at a 22-pixel
+image size. Canonical path coordinates, circle locations and the large/native icon
+are unchanged. The normal active-window result was captured through read-only X11
+access to the task-owned window only; hover/open interaction was not automated.
+
+The final button snapshot passed formatting, Clippy, full tests, all eight conditional
+policy tests and the release build with two jobs at lowered priority. The cached
+release build completed in 9.78s; its binary is 36.32 MiB. The updated snapshot still
+requires the focused final mechanical round, intent follow-up and its own full CI.

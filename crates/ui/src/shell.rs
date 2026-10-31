@@ -1,14 +1,15 @@
-use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
 use gpui_kit::component::popover::Popover;
 use gpui_kit::component::{
-    ActiveTheme, Disableable, IconName, InteractiveElementExt, Root, Sizable, ThemeMode, TitleBar,
+    ActiveTheme, Colorize, Disableable, IconName, InteractiveElementExt, Root, Selectable, Sizable,
+    ThemeMode, TitleBar,
 };
 use gpui_kit::{
-    App, AppContext, Bounds, Context, Corners, Entity, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, KeyBinding, MouseButton, ParentElement, Pixels, Render, Styled, Subscription,
-    Window, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
-    WindowOptions, div, img, point, prelude::FluentBuilder, px, size,
+    Anchor, App, AppContext, Bounds, Context, Corners, Entity, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement, Pixels, Render,
+    Styled, Subscription, Window, WindowAppearance, WindowBackgroundAppearance, WindowBounds,
+    WindowDecorations, WindowOptions, div, img, point, prelude::FluentBuilder, px, size,
 };
 
 use crate::state::{Appearance, Display, Rectangle, State, Store};
@@ -114,6 +115,89 @@ fn bounds(rectangle: Rectangle) -> Bounds<Pixels> {
         point(px(rectangle.x), px(rectangle.y)),
         size(px(rectangle.width), px(rectangle.height)),
     )
+}
+
+fn application_button_width(window: &Window, cx: &App) -> Pixels {
+    let style = gpui_kit::TextStyle {
+        font_family: cx.theme().font_family.clone(),
+        ..Default::default()
+    };
+    let label = window.text_system().shape_line(
+        TITLE.into(),
+        window.rem_size() * 0.875,
+        &[style.to_run(TITLE.len())],
+        None,
+    );
+    label.width.ceil() + px(22.0 + 12.0) + window.rem_size() * 0.25
+}
+
+fn toolbar_accent(cx: &App) -> gpui_kit::Hsla {
+    if cx.theme().is_dark() {
+        cx.theme().blue_light
+    } else {
+        cx.theme().blue.darken(0.2)
+    }
+}
+
+fn application_button_style(open: bool, cx: &App) -> ButtonCustomVariant {
+    let accent = toolbar_accent(cx);
+    let (color, hover, active) = if open {
+        (
+            accent.opacity(0.30),
+            accent.opacity(0.40),
+            accent.opacity(0.52),
+        )
+    } else {
+        (
+            cx.theme().title_bar.darken(0.035),
+            accent.opacity(0.32),
+            accent.opacity(0.44),
+        )
+    };
+    ButtonCustomVariant::new(cx)
+        .color(color)
+        .foreground(cx.theme().foreground.darken(0.12))
+        .hover(hover)
+        .active(active)
+}
+
+// Popover selection must not replace the application's explicit open surface.
+struct ApplicationTrigger(Button);
+
+impl Selectable for ApplicationTrigger {
+    fn selected(self, _: bool) -> Self {
+        self
+    }
+    fn is_selected(&self) -> bool {
+        false
+    }
+}
+
+impl Styled for ApplicationTrigger {
+    fn style(&mut self) -> &mut gpui_kit::StyleRefinement {
+        self.0.style()
+    }
+}
+
+impl IntoElement for ApplicationTrigger {
+    type Element = gpui_kit::AnyElement;
+    fn into_element(self) -> Self::Element {
+        self.0.into_any_element()
+    }
+}
+
+fn toolbar_control(id: &'static str, child: impl IntoElement) -> impl IntoElement {
+    div()
+        .id(id)
+        .flex()
+        .capture_any_mouse_down(|event, window, _| {
+            if event.button != MouseButton::Left {
+                window.prevent_default();
+            }
+        })
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_double_click(|_, _, cx| cx.stop_propagation())
+        .child(child)
 }
 
 struct Shell {
@@ -307,70 +391,91 @@ impl Shell {
         cx.notify();
     }
 
-    fn toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn application_button(&self, window: &Window, cx: &Context<Self>) -> Button {
+        let open = self.menu.is_some();
+        Button::new("wireroom-menu")
+            .tab_stop(false)
+            .custom(application_button_style(open, cx))
+            .when(open, |button| button.bg(toolbar_accent(cx).opacity(0.30)))
+            .small()
+            .w(application_button_width(window, cx))
+            .px(px(6.0))
+            .h(px(26.0))
+            .child(img("wireroom/icon.png").size(px(22.0)))
+            .child(div().text_color(cx.theme().foreground).child(TITLE))
+    }
+
+    fn application_popover(&self, window: &Window, cx: &mut Context<Self>) -> Popover {
         let menu = self.menu.clone();
         let owner = cx.entity().downgrade();
-        let menu_button = Button::new("wireroom-menu")
-            .ghost()
-            .small()
-            .h(px(26.0))
-            .child(img("wireroom/icon.png").size(px(16.0)))
-            .child(TITLE);
+        Popover::new("application-menu")
+            .anchor(Anchor::TopLeft)
+            .appearance(false)
+            .overlay_closable(false)
+            .flex_shrink_0()
+            .when_some(
+                menu.as_ref().map(|menu| menu.focus_handle(cx)),
+                |popover, focus| popover.track_focus(&focus),
+            )
+            .open(menu.is_some())
+            .trigger(ApplicationTrigger(self.application_button(window, cx)))
+            .on_open_change(move |open, window, cx| {
+                let _ = owner.update(cx, |shell, cx| {
+                    if *open {
+                        shell.open_menu(window, cx);
+                    } else {
+                        shell.menu = None;
+                        window.focus(&shell.focus, cx);
+                        cx.notify();
+                    }
+                });
+            })
+            .content(move |_, _, _| {
+                menu.clone()
+                    .map(IntoElement::into_any_element)
+                    .unwrap_or_else(|| div().into_any_element())
+            })
+    }
+
+    fn toolbar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
+            .id("title-toolbar")
             .flex()
             .items_center()
-            .gap_2()
-            .child(
-                Popover::new("application-menu")
-                    .appearance(false)
-                    .overlay_closable(false)
-                    .when_some(
-                        menu.as_ref().map(|menu| menu.focus_handle(cx)),
-                        |popover, focus| popover.track_focus(&focus),
-                    )
-                    .open(menu.is_some())
-                    .trigger(menu_button)
-                    .on_open_change(move |open, window, cx| {
-                        let _ = owner.update(cx, |shell, cx| {
-                            if *open {
-                                shell.open_menu(window, cx);
-                            } else {
-                                shell.menu = None;
-                                window.focus(&shell.focus, cx);
-                                cx.notify();
-                            }
-                        });
-                    })
-                    .content(move |_, _, _| {
-                        menu.clone()
-                            .map(IntoElement::into_any_element)
-                            .unwrap_or_else(|| div().into_any_element())
-                    }),
-            )
-            .child(
+            .gap_1()
+            .flex_shrink_0()
+            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+            .child(toolbar_control(
+                "title-app-control",
+                self.application_popover(window, cx),
+            ))
+            .child(toolbar_control(
+                "title-demodulator-control",
                 Button::new("demodulator")
                     .ghost()
                     .small()
                     .h(px(26.0))
                     .label("Demodulator")
                     .disabled(true),
-            )
-            .child(
+            ))
+            .child(toolbar_control(
+                "title-play-control",
                 Button::new("play")
                     .ghost()
                     .small()
                     .h(px(26.0))
                     .icon(IconName::Play)
                     .disabled(true),
-            )
-            .child(
+            ))
+            .child(toolbar_control(
+                "title-stop-control",
                 Button::new("stop")
                     .ghost()
                     .small()
                     .h(px(26.0))
                     .label("Stop")
                     .disabled(true),
-            )
+            ))
     }
 
     fn title_bar(
@@ -386,7 +491,7 @@ impl Shell {
             .flex_1()
             .min_w_0()
             .h_full()
-            .child(self.toolbar(cx))
+            .child(self.toolbar(window, cx))
             .child(div().flex_1());
         if !cfg!(target_os = "linux") {
             return TitleBar::new()

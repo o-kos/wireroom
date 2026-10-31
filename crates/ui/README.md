@@ -49,9 +49,13 @@ core are not required. The GUI's platform dependencies can compile small C helpe
 
 ## Application icon
 
-The existing SVG artwork is authoritative. The toolbar uses a 64-pixel PNG export
-of the small optical artwork, displayed at 16 logical pixels to keep fractional-DPI
-rendering sharp. X11 receives a 256-pixel primary-artwork window icon through the
+The existing SVG artwork is authoritative. The application button follows the
+public Argand component exactly: a 22-logical-pixel `img`, a 26-pixel button,
+6-pixel horizontal padding and the same measured label/gap sizing. A 64-pixel PNG
+export supplies the icon. The small optical source retains canonical ring/arrow
+coordinates and four round dots, with a thin coral stroke and no navy outlines.
+Its view-box padding matches the reference logo's visible fill without enlarging
+the button box. X11 receives a 256-pixel primary-artwork window icon through the
 toolkit.
 Linux identifies the window as `io.github.o_kos.wireroom`; run
 `scripts/install-wr-desktop.sh target/debug/wr` to register the current user's
@@ -69,11 +73,17 @@ and open `target/Wireroom.app` for the Dock/application icon; an unbundled execu
 inherits the launching application's icon. The helper creates an unsigned local
 bundle and does not install it. The toolbar PNG is exported with `rsvg-convert -w 64 -h 64` from
 `assets/icons/wireroom-16.svg`. The small optical SVG retains the primary ring/arrow
-geometry and round marks with thinner ring strokes for legibility at 16 pixels.
+geometry and round marks with thinner ring strokes for small-size legibility.
 ICO and ICNS assets are raster exports of
 `assets/icons/wireroom.svg`, with no build-time image conversion.
 
 ## Reference
+
+The application button uses Argand's custom Off/On surfaces and a popover trigger
+that does not force toolkit selection. Off hover/pressed surfaces use the toolbar
+accent at 32%/44% opacity; open surfaces use 30%/40%/52%. The accent is `blue_light`
+in Dark and `blue.darken(0.2)` in Light. Active and inactive title bars retain the
+reference's separate `title_bar` and `background` roles.
 
 Frame geometry and neutral theme surfaces are adapted from the public
 [Argand](https://github.com/o-kos/argand) project. Its MIT notice is preserved in
@@ -93,6 +103,6 @@ Changing profiles or dependencies can leave obsolete artifacts until Cargo clean
 This affects build storage, not the executable's runtime memory.
 
 The GUI release package strips symbols, reducing the measured executable from
-49.68 MiB to 36.31 MiB. Dependency optimization, CLI release builds and development
+49.68 MiB to 36.32 MiB. Dependency optimization, CLI release builds and development
 debug information are unchanged; no additional LTO or code-generation changes are
 used to obtain that reduction.
