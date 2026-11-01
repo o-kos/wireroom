@@ -79,8 +79,9 @@ existing Wireroom icons. It does not connect the interface to `dmd` or change re
 ## Implementation status
 
 The shell implementation, final mechanical and intent reviews, and full cross-platform
-CI are complete. PR #29 remains Draft for the owner's manual acceptance checks.
-Moving this record to `completed/` does not claim those interaction checks passed.
+CI are complete. The owner explicitly accepted PR #29 for lifecycle completion.
+That acceptance does not itemize the interaction checks below; unverified details
+remain recorded as such.
 
 - [x] Add the native shell, assets and Argand-based frame with window controls.
 - [x] Add application menus, toolbar, status bar and shared Recent empty/list states.
@@ -91,7 +92,7 @@ Moving this record to `completed/` does not claim those interaction checks passe
 - [x] Move this implementation record to `docs/plans/completed/` before intent review.
 - [x] Complete independent intent review.
 - [x] Complete full CI on Linux, Windows and macOS.
-- [ ] Obtain the owner's manual acceptance of the remaining interaction checks.
+- [x] Obtain the owner's acceptance of the implementation for lifecycle completion.
 
 ## Validation
 
@@ -170,9 +171,9 @@ on Linux, Windows and macOS, including release and standalone CLI builds and the
 also passed. Native interaction coverage remains distinct from cross-platform build
 and test coverage.
 
-Keep PR #29 in Draft for the owner's visual review. Ready and merge transitions
-remain outside this handoff. Opening files, starting `dmd`, playback and domain
-panels remain separate future work.
+The owner accepted the implementation and authorized the Ready transition and
+squash merge after the required current-head `ci/full` check succeeds. Opening files,
+starting `dmd`, playback and domain panels remain separate future work.
 
 ## Application-button reference check
 
