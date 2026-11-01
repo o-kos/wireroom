@@ -78,9 +78,9 @@ existing Wireroom icons. It does not connect the interface to `dmd` or change re
 
 ## Implementation status
 
-The shell implementation and independent mechanical review are complete. PR #29
-remains Draft for intent review, full CI and the owner's manual acceptance checks.
-Moving this record to `completed/` does not claim those remaining checks passed.
+The shell implementation, final mechanical and intent reviews, and full cross-platform
+CI are complete. PR #29 remains Draft for the owner's manual acceptance checks.
+Moving this record to `completed/` does not claim those interaction checks passed.
 
 - [x] Add the native shell, assets and Argand-based frame with window controls.
 - [x] Add application menus, toolbar, status bar and shared Recent empty/list states.
@@ -89,8 +89,8 @@ Moving this record to `completed/` does not claim those remaining checks passed.
 - [x] Record native evidence and complete the local gate and release build.
 - [x] Address independent mechanical review and prepare the Draft PR for owner review.
 - [x] Move this implementation record to `docs/plans/completed/` before intent review.
-- [ ] Complete independent intent review.
-- [ ] Complete full CI on Linux, Windows and macOS.
+- [x] Complete independent intent review.
+- [x] Complete full CI on Linux, Windows and macOS.
 - [ ] Obtain the owner's manual acceptance of the remaining interaction checks.
 
 ## Validation
@@ -161,10 +161,14 @@ Mechanical round 1 identified three substantive P2 findings. All were accepted:
 - Return a failing process exit status when native window creation fails.
 
 No findings were declined. Mechanical round 2 was clean and confirmed the three
-corrections. The subsequent reference application-button correction requires the
-focused final mechanical round and intent follow-up. Full CI must cover that latest
-snapshot; an earlier run is not evidence for the new button. Native interaction
-coverage remains distinct from cross-platform build and test coverage.
+corrections. Final mechanical round 3 and the intent follow-up were clean, including
+the reference application-button style and visible-fill comparison.
+
+The final application-button code passed [full CI](https://github.com/o-kos/wireroom/actions/runs/41251992928)
+on Linux, Windows and macOS, including release and standalone CLI builds and the
+`ci/full` status check. Its [quick CI](https://github.com/o-kos/wireroom/actions/runs/41251981324)
+also passed. Native interaction coverage remains distinct from cross-platform build
+and test coverage.
 
 Keep PR #29 in Draft for the owner's visual review. Ready and merge transitions
 remain outside this handoff. Opening files, starting `dmd`, playback and domain
@@ -189,5 +193,6 @@ access to the task-owned window only; hover/open interaction was not automated.
 
 The final button snapshot passed formatting, Clippy, full tests, all eight conditional
 policy tests and the release build with two jobs at lowered priority. The cached
-release build completed in 9.78s; its binary is 36.32 MiB. The updated snapshot still
-requires the focused final mechanical round, intent follow-up and its own full CI.
+release build completed in 9.78s; its binary is 36.32 MiB. The focused final
+mechanical round, intent follow-up and full cross-platform CI subsequently passed.
+The owner interaction checklist remains unchecked.
