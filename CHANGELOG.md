@@ -6,6 +6,10 @@ All notable user-visible changes are documented here, following Keep a Changelog
 
 ### Added
 
+- Native `wr` window shell with application menus, persisted window placement,
+  System/Light/Dark appearance and an honest Recent view. File opening and
+  processing remain unavailable.
+
 - JSON replay execution with serial controls, source-time pacing, bounded lazy block
   spooling and portable no-overwrite payload publication under trusted stable output.
 

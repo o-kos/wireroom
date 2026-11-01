@@ -49,9 +49,24 @@ fn validate_sources(metadata: &Value) -> Result<(), String> {
 
 #[test]
 fn dependency_sources_stay_in_the_workspace_or_registry() {
+    let rustc = Command::new("rustc").arg("-vV").output().unwrap();
+    assert!(rustc.status.success());
+    let version = String::from_utf8(rustc.stdout).unwrap();
+    let host = version
+        .lines()
+        .find_map(|line| line.strip_prefix("host: "))
+        .unwrap();
+    // Inspect the complete active-platform graph; CI covers every supported host.
     let output = Command::new(env!("CARGO"))
         .current_dir(workspace())
-        .args(["metadata", "--locked", "--format-version", "1"])
+        .args([
+            "metadata",
+            "--locked",
+            "--filter-platform",
+            host,
+            "--format-version",
+            "1",
+        ])
         .output()
         .unwrap();
     assert!(
@@ -64,13 +79,15 @@ fn dependency_sources_stay_in_the_workspace_or_registry() {
 }
 
 #[test]
-fn default_build_graph_excludes_native_build_tools() {
-    // At the workspace root Cargo selects default-members. Include normal edges so
-    // build dependencies of transitive dependencies cannot escape the check.
+fn replay_build_graph_excludes_native_build_tools() {
+    // The GUI has platform dependencies; the standalone replay CLI stays Rust-only.
+    // Include normal edges to inspect transitive build dependencies too.
     let output = Command::new(env!("CARGO"))
         .current_dir(workspace())
         .args([
             "tree",
+            "-p",
+            "dmd",
             "--locked",
             "--offline",
             "--edges",
@@ -88,14 +105,14 @@ fn default_build_graph_excludes_native_build_tools() {
         String::from_utf8_lossy(&output.stderr)
     );
     let graph = String::from_utf8(output.stdout).unwrap();
-    assert!(!graph.trim().is_empty(), "default build graph is empty");
+    assert!(!graph.trim().is_empty(), "replay build graph is empty");
     for name in graph
         .lines()
         .filter_map(|line| line.split_whitespace().next())
     {
         assert!(
             !["cc", "cmake", "bindgen", "pkg-config"].contains(&name),
-            "default build graph contains prohibited native build tool {name}:\n{graph}"
+            "replay build graph contains prohibited native build tool {name}:\n{graph}"
         );
     }
 }

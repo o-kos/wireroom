@@ -19,6 +19,12 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Install GPUI platform libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libasound2-dev libfontconfig-dev \
+            libvulkan-dev libwayland-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
       - name: Install the pinned Rust toolchain
         run: rustup show active-toolchain
       - run: cargo fmt --all -- --check
@@ -59,6 +65,12 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Install GPUI platform libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libasound2-dev libfontconfig-dev \
+            libvulkan-dev libwayland-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
       - name: Install the pinned Rust toolchain
         run: rustup show active-toolchain
       - run: cargo fmt --all -- --check
@@ -98,6 +110,12 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
+      - name: Install GPUI platform libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libasound2-dev libfontconfig-dev \
+            libvulkan-dev libwayland-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
       - name: Install the pinned Rust toolchain
         run: rustup show active-toolchain
       - name: Test the decision logic

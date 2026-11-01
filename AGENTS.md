@@ -16,7 +16,7 @@ Do not plan signal-core integration, native loading, a C ABI or a general backen
 abstraction in this repository. The CLI has no backend selector; do not add automatic implementation selection.
 
 The interface toolkit is GPUI, through GPUI Kit, following the component principles of
-[Argand](https://github.com/o-kos/argand). The planned interface crate will build
+[Argand](https://github.com/o-kos/argand). The interface crate builds
 the `wr` binary, while `dmd` keeps its name.
 
 ## Workspace
@@ -25,6 +25,7 @@ the `wr` binary, while `dmd` keeps its name.
 - `crates/replay`: read-only recording validation and payload streaming.
 - `crates/source`: read-only source metadata and retained file access.
 - `crates/cli`: the replay implementation's command-line surface.
+- `crates/ui`: the native `wr` window shell.
 - `assets/icons/`: colour and monochrome Wireroom icon sources, with optical variants
   for small sizes.
 - `docs/plans`: active plans; `docs/plans/completed`: finished plans.
@@ -56,6 +57,8 @@ remain unimplemented. There is no native Cargo feature or signal-core integratio
 ## Architectural invariants
 
 - Workspace builds and tests require no Python, CMake, C++ toolchain or signal core.
+  The GUI needs platform libraries and SDK tools documented in `crates/ui/README.md`;
+  the replay CLI retains its Rust-only build.
 - Source and recording failures are explicit errors. Never silently repair data,
   switch processing implementations or fall back to real signal processing.
 - Sample positions are frames of the source file. For IQ, one frame is an I/Q pair.
@@ -107,15 +110,14 @@ an AI tool was used during development. Do not add co-author trailers or generat
 notices. Contributor and agent instructions describing the tooling are outside this
 rule's scope.
 
-Claude is unavailable. Use Codex only, with the fixed roles in `CONTRIBUTING.md`.
-Pass model and reasoning effort explicitly on every invocation: `gpt-6.1-sol` at
-medium for planning, dispatch, Git and Pull Request routine, reconnaissance and
-implementation; `gpt-6.1-sol` at high for mechanical and intent review. Reconnaissance
-and reviews are read-only; implementation uses workspace-write. These assignments
-replace previous roles, including for unfinished work. Keep the reviewer settings
-fixed across subsequent rounds. Run the reviewer read-only with `codex exec`, an
-explicit model and effort, a change-specific prompt and closed stdin as documented
-in `CONTRIBUTING.md`.
+Use the fixed roles in `CONTRIBUTING.md`. The coordinator uses `gpt-6-astra` at
+medium for planning and decisions only and does not write implementation code.
+Use `gpt-6.1-sol` at medium for implementation, reconnaissance, dispatch, Git and
+Pull Request routine, and at high for independent mechanical and intent review.
+Pass the model and reasoning effort explicitly on every invocation. Reconnaissance
+and reviews are read-only; implementation uses workspace-write. Keep reviewer
+settings fixed across rounds. Run independent reviews read-only with `codex exec`,
+a change-specific prompt and closed stdin as documented in `CONTRIBUTING.md`.
 
 Mechanical review repeats until nothing substantive remains, challenging every declined
 finding in later rounds, for at most three rounds. If substantive findings remain after the
